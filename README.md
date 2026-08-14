@@ -25,3 +25,17 @@ Deve ser possível gerar relatórios sobre cada participantes, com só contas a 
 ## tecnologias
 React orientado a função para o frontend com typescript, para estilização o tailwind, para componentes prontos shadcn ui e radix-ui, para ícones o phosphor icon.
 
+Seguir as boas práticas e convenções.
+
+Clean code.
+
+### Padrão de commit utilizado
+
+Será utilizado o Padrão Conventional Commits, adicionado o numero da issues e emoji.
+(Conventional Commits) [https://www.conventionalcommits.org/pt-br/v1.0.0/]
+
+## Padrão de emoji
+Será usado a base do (gitmoji) [https://gitmoji.dev/] com alterações:
+✅ - Tests;
+✨ - Features;
+💄 - Alteração visual;
