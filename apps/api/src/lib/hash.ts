@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { TAMANHO_MAXIMO_SENHA_BYTES, tamanhoEmBytes } from '@controle/shared';
 
 /**
  * Custo do bcrypt. 12 é o ponto atual entre segurança e latência de login aceitável.
@@ -12,8 +13,10 @@ const CUSTO = 12;
  * Duas senhas longas que só diferem no fim viram o mesmo hash. O limite é em bytes, não
  * em caracteres: cada acentuada ocupa 2 em UTF-8, então "senha com acentuação" cabe menos
  * do que parece. Rejeitar acima do limite é melhor que aceitar e validar só o começo.
+ *
+ * O limite e a contagem vêm de @controle/shared, os mesmos que o formulário usa.
  */
-export const TAMANHO_MAXIMO_SENHA_BYTES = 72;
+export { TAMANHO_MAXIMO_SENHA_BYTES };
 
 /**
  * Hash usado quando o e-mail não existe, para o login gastar o mesmo tempo dos dois lados.
@@ -32,7 +35,7 @@ function obterHashDescartavel(): Promise<string> {
 }
 
 export function excedeTamanhoMaximo(senha: string): boolean {
-  return Buffer.byteLength(senha, 'utf8') > TAMANHO_MAXIMO_SENHA_BYTES;
+  return tamanhoEmBytes(senha) > TAMANHO_MAXIMO_SENHA_BYTES;
 }
 
 export async function hashPassword(senha: string): Promise<string> {

@@ -21,6 +21,12 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET precisa de pelo menos 32 caracteres'),
   COOKIE_SECRET: z.string().min(32, 'COOKIE_SECRET precisa de pelo menos 32 caracteres'),
+  /** Validade da sessão. Sete dias por padrão — o suficiente para não deslogar no uso diário. */
+  JWT_EXPIRACAO_SEGUNDOS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(7 * 24 * 60 * 60),
   APP_URL: z.string().url().default('http://localhost:5173'),
 });
 

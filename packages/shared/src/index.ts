@@ -7,4 +7,6 @@
  * divergem na primeira alteração.
  */
 
-export const PLACEHOLDER = 'shared';
+export * from './schemas/senha.js';
+export * from './schemas/auth.js';
+export * from './schemas/usuario.js';
