@@ -11,6 +11,7 @@
 | [relatorios.md](relatorios.md)             | Os três modos, quais fichas entram e como o escopo é aplicado            |
 | [autenticacao.md](autenticacao.md)         | Sessão, os três guards e o modelo de permissão                           |
 | [compartilhamento.md](compartilhamento.md) | Consentimento, convite por WhatsApp e o vínculo entre pessoa e conta     |
+| [seo.md](seo.md)                           | Superfície pública, pré-renderização e o que o host precisa fazer        |
 | [lgpd.md](lgpd.md)                         | Inventário de dados pessoais, base legal, retenção e direitos do titular |
 | [legal/](legal/)                           | Termos de Uso e Política de Privacidade, versionados                     |
 

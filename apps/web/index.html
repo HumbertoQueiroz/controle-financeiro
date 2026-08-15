@@ -3,11 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      O token do convite viaja no caminho da URL. Sem esta política ele iria no cabeçalho
+      Referer de qualquer recurso externo que a página carregasse.
+    -->
+    <meta name="referrer" content="no-referrer" />
+
+    <!-- Substituído pelo prerender nas rotas públicas; o que fica aqui vale para o app. -->
+    <!--seo-->
     <title>Controle Financeiro</title>
     <meta
       name="description"
-      content="Controle de fatura de cartão de crédito e divisão de contas entre amigos, com contas a pagar e a receber."
+      content="Controle de fatura de cartão de crédito e divisão de contas entre amigos."
     />
+    <meta name="robots" content="noindex, nofollow" />
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+
+    <script>
+      /*
+       * Aplica o tema antes da primeira pintura.
+       *
+       * Em React isto rodaria depois do bundle, e quem usa tema escuro veria um lampejo
+       * branco em toda visita — o "flash of wrong theme", que num app aberto à noite é
+       * desconfortável e parece defeito.
+       */
+      (function () {
+        try {
+          var salvo = localStorage.getItem('controle:tema');
+          var escuro =
+            salvo === 'escuro' ||
+            (!salvo && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+          if (escuro) document.documentElement.classList.add('dark');
+        } catch (e) {
+          /* localStorage bloqueado: segue no tema claro */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

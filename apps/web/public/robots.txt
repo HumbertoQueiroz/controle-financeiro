@@ -1,0 +1,15 @@
+# O app é privado por natureza. Só a superfície de apresentação deve ser indexada.
+User-agent: *
+Allow: /$
+Allow: /termos
+Allow: /privacidade
+Allow: /entrar
+Allow: /cadastro
+
+# Dados de quem usa o sistema. O robots.txt pede; a meta tag noindex em cada rota garante.
+Disallow: /app/
+
+# O link do convite é credencial: quem o abre pode se cadastrar e ver dados financeiros.
+Disallow: /convite/
+
+Sitemap: https://controle-financeiro.app/sitemap.xml

@@ -7,6 +7,9 @@ import { ProvedorDeTema } from '@/lib/tema';
 import { AppShell } from '@/components/app-shell';
 import { Carregando } from '@/components/ui/estados';
 import { Entrar } from '@/pages/entrar';
+import { Landing } from '@/publico/landing';
+import { DocumentoLegal } from '@/publico/documento-legal';
+import { MetadadosDaRota } from '@/publico/metadados-da-rota';
 
 /**
  * As rotas do app são carregadas sob demanda.
@@ -69,6 +72,7 @@ export function App() {
     <QueryClientProvider client={clienteDeQuery}>
       <ProvedorDeTema>
         <BrowserRouter>
+          <MetadadosDaRota />
           <ProvedorDeAutenticacao>
             <Suspense
               fallback={
@@ -78,6 +82,11 @@ export function App() {
               }
             >
               <Routes>
+                {/* Superfície pública: pré-renderizada no build e indexável. */}
+                <Route path="/" element={<Landing />} />
+                <Route path="/termos" element={<DocumentoLegal documento="termos" />} />
+                <Route path="/privacidade" element={<DocumentoLegal documento="privacidade" />} />
+
                 <Route path="/entrar" element={<Entrar />} />
                 <Route path="/cadastro" element={<Cadastro />} />
                 <Route path="/convite/:token" element={<Convite />} />
@@ -104,7 +113,6 @@ export function App() {
                   </Route>
                 </Route>
 
-                <Route path="/" element={<Navigate to="/app" replace />} />
                 <Route path="*" element={<Navigate to="/app" replace />} />
               </Routes>
             </Suspense>

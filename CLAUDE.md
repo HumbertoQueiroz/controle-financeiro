@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado atual
 
-Fase 1 (fundação do monorepo) concluída. O plano de desenvolvimento completo, em 9 fases, está em `C:\Users\humbe\.claude\plans\crie-um-plano-de-reflective-newt.md`.
+As 9 fases do plano estão concluídas: fundação, schema, auth/LGPD, convites, cartão com importação de CSV, rateio de grupo, relatórios, frontend e landing/SEO. O plano está em `C:\Users\humbe\.claude\plans\crie-um-plano-de-reflective-newt.md`.
 
-Documentação em `Docs/`. Toda documentação e mensagem de commit em português.
+Documentação em `Docs/` — comece pelo [índice](Docs/README.md). Toda documentação e mensagem de commit em português.
+
+**Antes de publicar**, há pendências listadas em `Docs/seo.md` e `Docs/lgpd.md` (domínio real, revisão jurídica dos documentos legais, contato do encarregado, política de backup).
 
 ## Comandos
 
@@ -91,6 +93,8 @@ Recorra ao `grid` só quando o layout for de fato bidimensional, isto é, quando
 Nada de layout por `float`, `position: absolute` para posicionar conteúdo de fluxo, ou largura fixa em pixel — os três quebram no primeiro celular estreito.
 
 Demais diretrizes (bottom tab bar no celular, listas que viram cartões abaixo de `md:`, `tabular-nums` em valor monetário, cor semântica sempre acompanhada de sinal ou rótulo) estão na seção de design do plano em `C:\Users\humbe\.claude\plans\crie-um-plano-de-reflective-newt.md`.
+
+Componentes base em `apps/web/src/components/ui/`: `ListaDeDados` (cartões no celular, tabela a partir de `md:`), `Valor` (fonte tabular, sinal sempre junto da cor), `Painel` (sobe de baixo no celular, diálogo no desktop) e os estados de carregando/vazio/erro. **Todo alvo de toque tem no mínimo 44px**, inclusive a variante `pequeno` do botão, que é compacta na aparência e não no alvo.
 
 ## Commits
 
