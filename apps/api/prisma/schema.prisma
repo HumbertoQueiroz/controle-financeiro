@@ -91,8 +91,11 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  /// A Person espelho deste usuário — é ela que aparece como devedora ou credora.
-  person           Person?           @relation("UsuarioDaPessoa")
+  /// Todas as fichas que apontam para esta conta: a espelho (onde `ownerId` é o próprio
+  /// usuário) e uma em cada agenda alheia que o registrou. O relatório de alguém é a
+  /// união das obrigações de todas elas — é o que faz uma dívida lançada por outra pessoa
+  /// aparecer para quem deve.
+  pessoasVinculadas Person[]         @relation("UsuarioDaPessoa")
   /// Pessoas que este usuário cadastrou (terceiros, que podem não ter conta).
   people           Person[]          @relation("PessoasDoUsuario")
   grantsGiven      ReportGrant[]     @relation("GrantsConcedidos")
@@ -121,7 +124,11 @@ model Person {
   /// Quem cadastrou esta pessoa e responde pelos dados dela perante a LGPD.
   ownerId      String
   /// Preenchido quando esta pessoa é (ou virou) usuária do sistema.
-  userId       String?   @unique
+  ///
+  /// NÃO é único global: a mesma conta aparece uma vez na agenda de cada dono que a
+  /// registrou, além da ficha espelho dela própria. Unique global impediria a Ana de ter
+  /// "Bruno do rolê" apontando para a conta do Bruno, já que o Bruno também tem a dele.
+  userId       String?
   anonymizedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -129,6 +136,11 @@ model Person {
   owner User  @relation("PessoasDoUsuario", fields: [ownerId], references: [id], onDelete: Cascade)
   user  User? @relation("UsuarioDaPessoa", fields: [userId], references: [id], onDelete: SetNull)
 
+  /// Uma ficha por conta dentro de cada agenda. Duas apontando para a mesma conta
+  /// duplicariam o que ela deve, e o saldo dela apareceria dobrado.
+  @@unique([ownerId, userId])
+
+  convites              ReportInvite[]
   obligationsAsDebtor   Obligation[]         @relation("Devedor")
   obligationsAsCreditor Obligation[]         @relation("Credor")
   forwardedEntries      InvoiceEntry[]
@@ -177,6 +189,10 @@ model ReportInvite {
   email            String
   /// Opcional, e usado só para montar o link do WhatsApp que entrega o convite.
   phone            String?
+  /// A Person do cadastro do dono que corresponde a quem foi convidado. Quando presente,
+  /// o aceite vincula essa Person à conta criada — é assim que o convidado passa a ver
+  /// as dívidas que já estavam lançadas em nome dele antes de ele ter conta.
+  personId         String?
   scope            GrantScope
   tokenHash        String       @unique
   status           InviteStatus @default(PENDING)
@@ -187,8 +203,9 @@ model ReportInvite {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  owner      User  @relation("ConvitesEnviados", fields: [ownerId], references: [id], onDelete: Cascade)
-  acceptedBy User? @relation("ConvitesAceitos", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  owner      User    @relation("ConvitesEnviados", fields: [ownerId], references: [id], onDelete: Cascade)
+  acceptedBy User?   @relation("ConvitesAceitos", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  person     Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
 
   @@index([ownerId, email])
   @@index([status])

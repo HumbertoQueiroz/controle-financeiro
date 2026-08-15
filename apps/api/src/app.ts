@@ -12,6 +12,8 @@ import errorHandler from './plugins/error-handler.js';
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
 import { privacyRoutes } from './modules/privacy/privacy.routes.js';
+import { peopleRoutes } from './modules/people/people.routes.js';
+import { sharingRoutes } from './modules/sharing/sharing.routes.js';
 
 /**
  * Monta a aplicação sem escutar porta.
@@ -40,6 +42,8 @@ export async function buildApp() {
   await app.register(authRoutes);
   await app.register(usersRoutes);
   await app.register(privacyRoutes);
+  await app.register(peopleRoutes);
+  await app.register(sharingRoutes);
 
   return app;
 }

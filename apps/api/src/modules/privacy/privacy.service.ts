@@ -18,7 +18,12 @@ export async function exportarDados(prisma: PrismaClient, userId: string) {
       email: true,
       role: true,
       createdAt: true,
-      person: { select: { id: true, name: true, email: true, phone: true } },
+      // Todas as fichas que apontam para esta conta: a própria e as que outras pessoas
+      // criaram na agenda delas. Exportar só a própria esconderia do titular metade dos
+      // registros que existem sobre ele.
+      pessoasVinculadas: {
+        select: { id: true, name: true, email: true, phone: true, ownerId: true },
+      },
       termsAcceptances: {
         select: { documentType: true, version: true, acceptedAt: true, ipAddress: true },
       },
@@ -44,11 +49,14 @@ export async function exportarDados(prisma: PrismaClient, userId: string) {
     },
   });
 
-  const pessoaId = usuario.person?.id;
+  const idsDasFichas = usuario.pessoasVinculadas.map((pessoa) => pessoa.id);
+  const propria = usuario.pessoasVinculadas.find((pessoa) => pessoa.ownerId === userId);
 
-  const obrigacoes = pessoaId
+  const obrigacoes = idsDasFichas.length
     ? await prisma.obligation.findMany({
-        where: { OR: [{ debtorId: pessoaId }, { creditorId: pessoaId }] },
+        where: {
+          OR: [{ debtorId: { in: idsDasFichas } }, { creditorId: { in: idsDasFichas } }],
+        },
         select: {
           description: true,
           amount: true,
@@ -71,7 +79,8 @@ export async function exportarDados(prisma: PrismaClient, userId: string) {
       papel: usuario.role,
       criadoEm: usuario.createdAt,
     },
-    pessoa: usuario.person,
+    pessoa: propria ?? null,
+    fichasEmAgendasAlheias: usuario.pessoasVinculadas.filter((p) => p.ownerId !== userId).length,
     aceitesDeTermos: usuario.termsAcceptances,
     cartoes: usuario.cards,
     compartilhamentosConcedidos: usuario.grantsGiven,
@@ -80,7 +89,7 @@ export async function exportarDados(prisma: PrismaClient, userId: string) {
       ...obrigacao,
       amount: obrigacao.amount.toString(),
       settledAmount: obrigacao.settledAmount.toString(),
-      papel: obrigacao.debtorId === pessoaId ? 'DEVEDOR' : 'CREDOR',
+      papel: idsDasFichas.includes(obrigacao.debtorId) ? 'DEVEDOR' : 'CREDOR',
       debtorId: undefined,
       creditorId: undefined,
     })),
@@ -133,9 +142,19 @@ export async function anonimizarConta(prisma: PrismaClient, userId: string) {
       },
     });
 
+    // A ficha espelho — a que o próprio usuário possui — é anonimizada.
     await tx.person.updateMany({
-      where: { userId },
+      where: { userId, ownerId: userId },
       data: { name: 'Usuário excluído', email: null, phone: null, anonymizedAt: agora },
+    });
+
+    // As fichas em agendas alheias apenas perdem o vínculo com a conta. Elas são o
+    // registro que aquele outro dono fez, sob a responsabilidade dele, e apagá-las
+    // deixaria alguém com um devedor anônimo sem saber de quem cobrar. O que a exclusão
+    // garante é que esta conta não é mais alcançada por elas.
+    await tx.person.updateMany({
+      where: { userId, ownerId: { not: userId } },
+      data: { userId: null },
     });
 
     // Consentimento morre com a conta: quem tinha acesso ao relatório dela perde agora,

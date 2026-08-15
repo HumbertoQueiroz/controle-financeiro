@@ -39,6 +39,21 @@ poderia participar de um rateio, e o modelo teria dois tipos de gente.
 `Person.ownerId` registra quem cadastrou aquela pessoa — é quem responde pelos dados dela
 perante a LGPD, já que o titular não aceitou termo nenhum.
 
+### Uma ficha por agenda, não uma por pessoa
+
+`Person.userId` é único por **(dono, conta)**, não globalmente. A mesma conta aparece uma
+vez na agenda de cada dono que a registrou, mais a ficha espelho dela própria.
+
+O unique global parecia natural e estava errado: como todo usuário já nasce com a ficha
+espelho, ninguém mais conseguia registrar aquela pessoa na sua agenda — a Ana não podia ter
+"Bruno do rolê" apontando para a conta do Bruno. O que precisa ser único é uma ficha por
+conta **dentro de cada agenda**, senão duas fichas duplicariam o que aquela pessoa deve e o
+saldo dela apareceria dobrado.
+
+**Consequência para os relatórios:** as obrigações de alguém são a união das obrigações de
+**todas** as fichas com aquele `userId`, nunca as de uma só. É isso que faz uma dívida
+lançada pela Ana aparecer para o Bruno quando ele entra na conta dele.
+
 ## Permissão: `ReportGrant` e `ReportInvite`
 
 `ReportGrant` é o consentimento que libera um terceiro a ver o relatório de alguém, com
