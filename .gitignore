@@ -1,0 +1,36 @@
+# Dependências
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Ambiente — nunca commitar segredo
+.env
+.env.local
+.env.*.local
+
+# Testes
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# Editor / SO / ferramental de agente
+.claude/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ATENÇÃO: docker-container/ NÃO entra aqui.
+# O README exige que o volume do Postgres seja commitado junto com o projeto.

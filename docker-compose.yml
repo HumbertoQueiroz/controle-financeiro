@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: controle-financeiro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-controle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-controle}
+      POSTGRES_DB: ${POSTGRES_DB:-controle_financeiro}
+      # O Postgres recusa iniciar quando o diretório de dados é a própria raiz de um
+      # bind mount (permissões do host não batem com as que ele exige). Apontar o PGDATA
+      # para uma subpasta do mount resolve, e é o que permite manter o volume em
+      # docker-container/, versionado junto com o projeto como o README pede.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - ./docker-container/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-controle} -d ${POSTGRES_DB:-controle_financeiro}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Banco exclusivo da suíte de testes. Os dados são descartáveis e as tabelas são
+  # truncadas entre testes, então este volume é anônimo de propósito — não faz sentido
+  # versionar estado de teste, e misturá-lo ao banco de desenvolvimento faria a suíte
+  # apagar dados reais.
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: controle-financeiro-db-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-controle}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-controle}
+      POSTGRES_DB: ${POSTGRES_DB:-controle_financeiro}_test
+    ports:
+      - '${POSTGRES_TEST_PORT:-5433}:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-controle}']
+      interval: 5s
+      timeout: 5s
+      retries: 10

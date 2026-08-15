@@ -1,0 +1,13 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm bloqueia scripts de pós-instalação por padrão — cada pacote liberado aqui é uma
+# decisão consciente. Estes precisam rodar: prisma gera o client a partir do schema,
+# bcrypt e esbuild compilam/baixam binário nativo da plataforma.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  bcrypt: true
+  esbuild: true
+  prisma: true
