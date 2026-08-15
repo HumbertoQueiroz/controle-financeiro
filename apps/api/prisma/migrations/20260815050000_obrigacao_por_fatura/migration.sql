@@ -1,0 +1,13 @@
+-- Nova origem de obrigacao: a fatura inteira.
+--
+-- A obrigacao do dono do cartao passa a ser UMA por fatura, com o valor total e a data de
+-- vencimento dela, em vez de uma por lancamento. Ninguem paga cada compra: paga a fatura.
+--
+-- Uma obrigacao por lancamento duplicaria a divida (a fatura ja e o agregado), faria o
+-- relatorio de contas a pagar listar dezenas de linhas que nao correspondem a nenhum
+-- pagamento real, e obrigaria estorno a cancelar obrigacao individual em vez de
+-- simplesmente reduzir o total da fatura.
+--
+-- CARD_ENTRY continua existindo, agora com um unico significado: o gasto repassado a
+-- terceiro, que e o que o dono tem a receber daquela pessoa.
+ALTER TYPE "OriginType" ADD VALUE IF NOT EXISTS 'INVOICE' BEFORE 'CARD_ENTRY';

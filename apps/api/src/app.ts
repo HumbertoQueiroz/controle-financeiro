@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import {
   serializerCompiler,
   validatorCompiler,
@@ -14,6 +15,7 @@ import { usersRoutes } from './modules/users/users.routes.js';
 import { privacyRoutes } from './modules/privacy/privacy.routes.js';
 import { peopleRoutes } from './modules/people/people.routes.js';
 import { sharingRoutes } from './modules/sharing/sharing.routes.js';
+import { cardsRoutes } from './modules/cards/cards.routes.js';
 
 /**
  * Monta a aplicação sem escutar porta.
@@ -36,6 +38,9 @@ export async function buildApp() {
   await app.register(cors, { origin: env.APP_URL, credentials: true });
   await app.register(prismaPlugin);
   await app.register(authPlugin);
+  // `attachFieldsToBody: false` mantém o arquivo como stream: carregar o CSV inteiro na
+  // memória antes de saber se o usuário pode importar seria trabalho jogado fora.
+  await app.register(multipart, { limits: { files: 1, fileSize: 5 * 1024 * 1024 } });
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -44,6 +49,7 @@ export async function buildApp() {
   await app.register(privacyRoutes);
   await app.register(peopleRoutes);
   await app.register(sharingRoutes);
+  await app.register(cardsRoutes);
 
   return app;
 }

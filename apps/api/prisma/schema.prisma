@@ -58,6 +58,10 @@ enum ObligationStatus {
 }
 
 enum OriginType {
+  /// A fatura inteira, devida pelo dono do cartão à instituição. É uma obrigação por
+  /// fatura, não por compra: ninguém paga cada lançamento, paga a fatura na data dela.
+  INVOICE
+  /// Um lançamento repassado a terceiro — o que o dono tem a receber daquela pessoa.
   CARD_ENTRY
   GROUP_EXPENSE
   MANUAL

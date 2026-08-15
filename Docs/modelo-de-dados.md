@@ -21,6 +21,18 @@ Os três modos de relatório do README saem daí:
 
 `creditorId` é nulo quando a contraparte é a instituição do cartão, e não uma pessoa.
 
+As origens (`originType`) determinam o que cada obrigação representa:
+
+| Origem          | Devedor → Credor                    | Quantidade                                          |
+| --------------- | ----------------------------------- | --------------------------------------------------- |
+| `INVOICE`       | dono do cartão → instituição (nulo) | **uma por fatura**, com o total e o vencimento dela |
+| `CARD_ENTRY`    | terceiro → dono do cartão           | uma por lançamento repassado                        |
+| `GROUP_EXPENSE` | participante → quem pagou           | uma por cota de despesa                             |
+| `MANUAL`        | livre                               | lançada à mão                                       |
+
+A obrigação da fatura é uma só porque ninguém paga cada compra — paga a fatura. Uma por
+lançamento duplicaria a dívida, já que a fatura é o agregado delas.
+
 Todo valor monetário é `Decimal(14,2)`. Nunca `Float`: erro de arredondamento em
 fechamento de saldo é bug que aparece como centavo faltando e ninguém consegue explicar.
 
