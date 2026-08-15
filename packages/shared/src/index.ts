@@ -13,4 +13,6 @@ export * from './schemas/usuario.js';
 export * from './schemas/pessoa.js';
 export * from './schemas/compartilhamento.js';
 export * from './schemas/cartao.js';
+export * from './schemas/grupo.js';
 export * from './dinheiro.js';
+export * from './rateio.js';

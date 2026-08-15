@@ -16,6 +16,7 @@ import { privacyRoutes } from './modules/privacy/privacy.routes.js';
 import { peopleRoutes } from './modules/people/people.routes.js';
 import { sharingRoutes } from './modules/sharing/sharing.routes.js';
 import { cardsRoutes } from './modules/cards/cards.routes.js';
+import { groupsRoutes } from './modules/groups/groups.routes.js';
 
 /**
  * Monta a aplicação sem escutar porta.
@@ -50,6 +51,7 @@ export async function buildApp() {
   await app.register(peopleRoutes);
   await app.register(sharingRoutes);
   await app.register(cardsRoutes);
+  await app.register(groupsRoutes);
 
   return app;
 }
