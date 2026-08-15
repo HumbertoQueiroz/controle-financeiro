@@ -1,0 +1,487 @@
+// Modelo de dados do controle financeiro.
+//
+// A decisão central está em Obligation: "a pagar" e "a receber" são a MESMA linha vista
+// das duas pontas, não duas tabelas. Duas tabelas divergem — um acerto lançado de um lado
+// e esquecido do outro produz saldos que não fecham, e o erro só aparece no fechamento do
+// mês. Com uma linha só, o relatório de quem deve e o de quem recebe leem a mesma verdade.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  USER
+}
+
+/// Escopo do que o dono dos dados autoriza um terceiro a enxergar.
+enum GrantScope {
+  PAYABLE
+  RECEIVABLE
+  BOTH
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum DocumentType {
+  TERMS
+  PRIVACY
+}
+
+/// Formas de pagamento que o README trata como relevantes ao domínio.
+enum PaymentMethod {
+  CASH
+  BARTER
+  MEAL_VOUCHER
+  CREDIT_CARD
+}
+
+enum ObligationStatus {
+  OPEN
+  PARTIAL
+  SETTLED
+  CANCELLED
+}
+
+enum OriginType {
+  CARD_ENTRY
+  GROUP_EXPENSE
+  MANUAL
+}
+
+enum InvoiceStatus {
+  OPEN
+  CLOSED
+  PAID
+}
+
+enum SettlementStatus {
+  OPEN
+  CLOSED
+}
+
+// ---------------------------------------------------------------------------
+// Identidade e permissão
+// ---------------------------------------------------------------------------
+
+model User {
+  id                 String    @id @default(uuid())
+  name               String
+  email              String    @unique
+  passwordHash       String
+  role               Role      @default(USER)
+  active             Boolean   @default(true)
+  /// Marcado quando a senha foi gerada pelo sistema (seed) e precisa ser trocada.
+  mustChangePassword Boolean   @default(false)
+  anonymizedAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  /// A Person espelho deste usuário — é ela que aparece como devedora ou credora.
+  person           Person?           @relation("UsuarioDaPessoa")
+  /// Pessoas que este usuário cadastrou (terceiros, que podem não ter conta).
+  people           Person[]          @relation("PessoasDoUsuario")
+  grantsGiven      ReportGrant[]     @relation("GrantsConcedidos")
+  grantsReceived   ReportGrant[]     @relation("GrantsRecebidos")
+  invitesSent      ReportInvite[]    @relation("ConvitesEnviados")
+  invitesAccepted  ReportInvite[]    @relation("ConvitesAceitos")
+  termsAcceptances TermsAcceptance[]
+  cards            CreditCard[]
+  groups           Group[]
+  importBatches    ImportBatch[]
+
+  @@index([email])
+}
+
+/// Contraparte de qualquer obrigação.
+///
+/// Resolve o "o terceiro pode ou não ser usuário do sistema" do README: a Person existe
+/// sozinha, e quando aquela pessoa passa a ter conta o campo `userId` faz o vínculo —
+/// que é o que permite a ela enxergar o que deve. Sem essa separação seria preciso obrigar
+/// todo amigo de rolê a criar conta antes de a despesa poder ser registrada.
+model Person {
+  id           String    @id @default(uuid())
+  name         String
+  email        String?
+  phone        String?
+  /// Quem cadastrou esta pessoa e responde pelos dados dela perante a LGPD.
+  ownerId      String
+  /// Preenchido quando esta pessoa é (ou virou) usuária do sistema.
+  userId       String?   @unique
+  anonymizedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner User  @relation("PessoasDoUsuario", fields: [ownerId], references: [id], onDelete: Cascade)
+  user  User? @relation("UsuarioDaPessoa", fields: [userId], references: [id], onDelete: SetNull)
+
+  obligationsAsDebtor   Obligation[]         @relation("Devedor")
+  obligationsAsCreditor Obligation[]         @relation("Credor")
+  forwardedEntries      InvoiceEntry[]
+  groupMemberships      GroupMember[]
+  expensesPaid          GroupExpense[]
+  expenseShares         ExpenseShare[]
+  transfersFrom         SettlementTransfer[] @relation("TransferenciaOrigem")
+  transfersTo           SettlementTransfer[] @relation("TransferenciaDestino")
+
+  @@index([ownerId])
+  @@index([email])
+}
+
+/// O consentimento que libera um terceiro a ver o relatório de alguém.
+///
+/// Existe no máximo uma linha por par (dono, convidado): revogar preenche `revokedAt` e
+/// conceder de novo limpa o campo. Guardar histórico como linhas novas faria a consulta
+/// de permissão precisar escolher entre várias, e a consulta de permissão é o lugar onde
+/// ambiguidade vira vazamento de dado.
+model ReportGrant {
+  id            String     @id @default(uuid())
+  ownerId       String
+  granteeUserId String
+  scope         GrantScope
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  owner   User @relation("GrantsConcedidos", fields: [ownerId], references: [id], onDelete: Cascade)
+  grantee User @relation("GrantsRecebidos", fields: [granteeUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, granteeUserId])
+  @@index([granteeUserId])
+}
+
+/// Consentimento pendente, para quem ainda não tem conta.
+///
+/// O `scope` mora aqui dentro: é o que faz a permissão viajar embutida no convite e o
+/// convidado já entrar enxergando o relatório, sem o dono precisar voltar para conceder.
+/// Do token guarda-se apenas o hash — vazamento do banco não pode virar acesso a dado
+/// financeiro de ninguém.
+model ReportInvite {
+  id               String       @id @default(uuid())
+  ownerId          String
+  email            String
+  /// Opcional, e usado só para montar o link do WhatsApp que entrega o convite.
+  phone            String?
+  scope            GrantScope
+  tokenHash        String       @unique
+  status           InviteStatus @default(PENDING)
+  expiresAt        DateTime
+  acceptedByUserId String?
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  owner      User  @relation("ConvitesEnviados", fields: [ownerId], references: [id], onDelete: Cascade)
+  acceptedBy User? @relation("ConvitesAceitos", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, email])
+  @@index([status])
+}
+
+/// Prova de aceite dos termos, exigida pela LGPD.
+///
+/// Uma linha por versão aceita, nunca sobrescrita: o histórico É a evidência de quando e
+/// a que a pessoa consentiu. Guardar só "aceitou: sim" não demonstra nada depois que o
+/// documento muda.
+model TermsAcceptance {
+  id           String       @id @default(uuid())
+  userId       String
+  documentType DocumentType
+  version      String
+  acceptedAt   DateTime     @default(now())
+  ipAddress    String?
+  userAgent    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentType, version])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Obrigações — a espinha dorsal dos relatórios
+// ---------------------------------------------------------------------------
+
+model Obligation {
+  id            String  @id @default(uuid())
+  debtorId      String
+  /// Nulo quando a contraparte é a instituição do cartão, e não uma pessoa.
+  creditorId    String?
+  description   String
+  amount        Decimal @db.Decimal(14, 2)
+  settledAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  dueDate       DateTime
+  status        ObligationStatus @default(OPEN)
+  paymentMethod PaymentMethod
+  originType    OriginType
+  /// Id do InvoiceEntry ou do GroupExpense que originou esta obrigação.
+  originId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  debtor   Person  @relation("Devedor", fields: [debtorId], references: [id], onDelete: Cascade)
+  creditor Person? @relation("Credor", fields: [creditorId], references: [id], onDelete: Cascade)
+
+  @@index([debtorId, status])
+  @@index([creditorId, status])
+  @@index([originType, originId])
+  @@index([dueDate])
+}
+
+// ---------------------------------------------------------------------------
+// Cartão de crédito
+// ---------------------------------------------------------------------------
+
+model CreditCard {
+  id String @id @default(uuid())
+
+  ownerUserId String
+  name        String
+  brand       String?
+  /// Apenas os quatro últimos dígitos. Número completo, CVV e validade não entram no
+  /// banco — minimização exigida pela LGPD e o que evita que um vazamento vire fraude.
+  lastFour    String? @db.Char(4)
+  closingDay  Int
+  dueDay      Int
+  active      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner    User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+  imports  ImportBatch[]
+
+  @@index([ownerUserId])
+}
+
+model Invoice {
+  id     String @id @default(uuid())
+  cardId String
+  /// Mês de referência no formato YYYY-MM. String em vez de data para não depender de
+  /// fuso: "a fatura de agosto" é a mesma em qualquer timezone, um DateTime não é.
+  referenceMonth String        @db.Char(7)
+  dueDate        DateTime
+  status         InvoiceStatus @default(OPEN)
+  total          Decimal       @default(0) @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  card     CreditCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  entries  InvoiceEntry[]
+  payments InvoicePayment[]
+
+  @@unique([cardId, referenceMonth])
+  @@index([status])
+}
+
+model InvoiceEntry {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  date        DateTime
+  description String
+  amount      Decimal  @db.Decimal(14, 2)
+
+  installmentNumber Int?
+  installmentTotal  Int?
+
+  /// Chave de deduplicação derivada da linha do CSV. O par (invoiceId, dedupeHash) é
+  /// único no banco: é isso que torna a reimportação da mesma fatura idempotente mesmo
+  /// sob concorrência. Checar-antes-de-inserir no código teria race condition.
+  dedupeHash String
+
+  /// Preenchido quando o gasto foi repassado a um terceiro — gera o "a receber".
+  forwardedToPersonId String?
+  importBatchId       String?
+
+  createdAt DateTime @default(now())
+
+  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  forwardedTo Person?      @relation(fields: [forwardedToPersonId], references: [id], onDelete: SetNull)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([invoiceId, dedupeHash])
+  @@index([invoiceId, date])
+  @@index([forwardedToPersonId])
+}
+
+model InvoicePayment {
+  id            String        @id @default(uuid())
+  invoiceId     String
+  date          DateTime
+  amount        Decimal       @db.Decimal(14, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  dedupeHash    String
+  importBatchId String?
+
+  createdAt DateTime @default(now())
+
+  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([invoiceId, dedupeHash])
+  @@index([invoiceId])
+}
+
+/// Auditoria de cada importação de CSV.
+///
+/// Guarda o que foi ignorado, não só o que entrou. O README manda ignorar em silêncio o
+/// pagamento de fatura que já não está aberta — silêncio para o usuário, não amnésia para
+/// o sistema: sem este registro, "sumiu um pagamento" vira investigação sem pista.
+model ImportBatch {
+  id     String @id @default(uuid())
+  cardId String
+  userId String
+
+  fileName        String
+  /// Hash do arquivo inteiro, para reconhecer o mesmo CSV enviado de novo.
+  fileHash        String
+  rowsTotal       Int    @default(0)
+  rowsInserted    Int    @default(0)
+  rowsSkipped     Int    @default(0)
+  paymentsIgnored Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  card     CreditCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries  InvoiceEntry[]
+  payments InvoicePayment[]
+
+  @@index([cardId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Rateio de grupo
+// ---------------------------------------------------------------------------
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  ownerUserId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  members     GroupMember[]
+  events      GroupEvent[]
+  settlements Settlement[]
+
+  @@index([ownerUserId])
+}
+
+model GroupMember {
+  id       String   @id @default(uuid())
+  groupId  String
+  personId String
+  joinedAt DateTime @default(now())
+
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, personId])
+}
+
+/// Um rolê: o evento onde as despesas aconteceram.
+model GroupEvent {
+  id      String   @id @default(uuid())
+  groupId String
+  name    String
+  date    DateTime
+
+  createdAt DateTime @default(now())
+
+  group    Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  expenses GroupExpense[]
+
+  @@index([groupId, date])
+}
+
+model GroupExpense {
+  id            String        @id @default(uuid())
+  eventId       String
+  /// Quem pagou pelos demais.
+  payerPersonId String
+  description   String
+  amount        Decimal       @db.Decimal(14, 2)
+  paymentMethod PaymentMethod
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event  GroupEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  payer  Person         @relation(fields: [payerPersonId], references: [id], onDelete: Cascade)
+  shares ExpenseShare[]
+
+  @@index([eventId])
+  @@index([payerPersonId])
+}
+
+/// Quanto da despesa cabe a cada participante.
+///
+/// Guarda valor absoluto, não percentual: a soma das shares tem de bater exatamente com
+/// o valor da despesa, e percentual sobre um valor que não divide exato (R$ 10,00 entre 3)
+/// perde centavos no arredondamento — centavo perdido é saldo que nunca fecha.
+model ExpenseShare {
+  id        String  @id @default(uuid())
+  expenseId String
+  personId  String
+  amount    Decimal @db.Decimal(14, 2)
+
+  expense GroupExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  person  Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, personId])
+}
+
+/// Fechamento do mês: resolve quem paga quem.
+model Settlement {
+  id      String @id @default(uuid())
+  groupId String
+  /// YYYY-MM, mesmo motivo do referenceMonth da fatura.
+  period  String @db.Char(7)
+
+  status   SettlementStatus @default(OPEN)
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group     Group                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  transfers SettlementTransfer[]
+
+  @@unique([groupId, period])
+}
+
+model SettlementTransfer {
+  id           String  @id @default(uuid())
+  settlementId String
+  fromPersonId String
+  toPersonId   String
+  amount       Decimal @db.Decimal(14, 2)
+
+  settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  from       Person     @relation("TransferenciaOrigem", fields: [fromPersonId], references: [id], onDelete: Cascade)
+  to         Person     @relation("TransferenciaDestino", fields: [toPersonId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+}

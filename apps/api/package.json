@@ -18,9 +18,6 @@
     "db:reset": "prisma migrate reset --force",
     "db:generate": "prisma generate"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
     "@controle/shared": "workspace:*",
     "@fastify/cookie": "^11.0.1",

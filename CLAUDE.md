@@ -43,6 +43,9 @@ Antes de tudo: copie `.env.example` para `.env`. A API valida o `.env` na subida
 - **Nunca use `Set-Content -Encoding utf8`** para gravar `.json`, `.env` ou `.ts`. No PowerShell 5.1 isso grava **BOM**, e o BOM quebra `JSON.parse` — o sintoma é o Vite falhando ao carregar config PostCSS com `Unexpected token '﻿'`. Use as ferramentas de edição de arquivo, ou `[System.IO.File]::WriteAllText` com `UTF8Encoding($false)`.
 - O `PGDATA` no `docker-compose.yml` aponta para a **subpasta** `pgdata` dentro do bind mount. O Postgres recusa iniciar quando o diretório de dados é a raiz de um bind mount no Windows. Não "simplifique" isso.
 - `pnpm` 11 usa `allowBuilds` no `pnpm-workspace.yaml` (não `onlyBuiltDependencies`) para liberar scripts de pós-instalação.
+- **Há um Postgres nativo do Windows escutando em `0.0.0.0:5432` nesta máquina.** Por isso o container de desenvolvimento usa a porta **5442** (`POSTGRES_PORT` no `.env`). Com o container em 5432, o Docker fica só com o IPv6 e as conexões por IPv4 caem no Postgres nativo — o sintoma é `P1000: Authentication failed`, que parece senha errada e não é.
+- `prisma migrate dev` é **interativo** e falha aqui com "environment is non-interactive" quando precisa criar migration. O caminho é `prisma migrate dev --create-only` para gerar e `migrate deploy` (ou `migrate reset --force`) para aplicar. O Prisma também recusa rodar ao detectar que foi invocado pelo Claude Code; limpe `CLAUDECODE` no ambiente do comando.
+- A configuração do Prisma está em `apps/api/prisma.config.ts` (não em `package.json#prisma`, depreciado). Com ela, o Prisma **não carrega `.env` sozinho** — o próprio arquivo carrega o `.env` da raiz.
 
 ## Stack
 
