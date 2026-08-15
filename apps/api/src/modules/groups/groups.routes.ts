@@ -104,6 +104,13 @@ export async function groupsRoutes(app: FastifyInstance) {
   );
 
   rotas.get(
+    '/roles/:id/membros',
+    { schema: { params: paramsId, response: { 200: z.array(membroSchema) } } },
+    async (request) =>
+      service.listarMembrosDoEvento(app.prisma, request.params.id, request.usuario!.id),
+  );
+
+  rotas.get(
     '/roles/:id/despesas',
     { schema: { params: paramsId, response: { 200: z.array(despesaSchema) } } },
     async (request) => service.listarDespesas(app.prisma, request.params.id, request.usuario!.id),

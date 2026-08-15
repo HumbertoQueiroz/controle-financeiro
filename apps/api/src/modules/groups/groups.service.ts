@@ -169,6 +169,23 @@ async function carregarEventoDoDono(prisma: PrismaClient, eventoId: string, dono
 }
 
 /**
+ * Membros do grupo a que o rolê pertence.
+ *
+ * A tela de despesas precisa saber entre quem dividir, e chegar nela pela URL do rolê não
+ * dá acesso ao id do grupo — pedir que a interface guarde esse vínculo faria a página
+ * quebrar em recarregamento ou link compartilhado.
+ */
+export async function listarMembrosDoEvento(
+  prisma: PrismaClient,
+  eventoId: string,
+  donoId: string,
+) {
+  const evento = await carregarEventoDoDono(prisma, eventoId, donoId);
+
+  return listarMembros(prisma, evento.groupId, donoId);
+}
+
+/**
  * Calcula as cotas da despesa, em centavos.
  *
  * Com cotas explícitas, a soma tem de bater **exatamente** com o valor. Aceitar diferença

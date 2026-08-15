@@ -1,13 +1,123 @@
 @import 'tailwindcss';
 
-/**
- * Tokens de tema. A paleta definitiva e o dark mode entram na fase 8, junto do design
- * system — aqui fica só o suficiente para o toolchain do Tailwind ser verificável.
+/*
+ * Dark mode por classe, não por preferência do sistema: quem confere finanças à noite
+ * quer escolher, e a escolha precisa sobreviver ao recarregamento.
  */
-@theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Paleta neutra com UMA cor de destaque. Cor semântica é reservada para significado:
+ * entrada em verde, saída em vermelho, saldo neutro. Nunca decorativa.
+ */
+:root {
+  --cor-fundo: #ffffff;
+  --cor-superficie: #ffffff;
+  --cor-superficie-2: #f6f6f7;
+  --cor-borda: #e4e4e7;
+  --cor-texto: #18181b;
+  --cor-texto-suave: #71717a;
+
+  --cor-destaque: #4f46e5;
+  --cor-destaque-texto: #ffffff;
+  --cor-destaque-suave: #eef2ff;
+
+  --cor-positivo: #15803d;
+  --cor-positivo-suave: #f0fdf4;
+  --cor-negativo: #b91c1c;
+  --cor-negativo-suave: #fef2f2;
+  --cor-atencao: #a16207;
+
+  --raio: 0.75rem;
 }
 
-body {
-  @apply bg-white text-neutral-900 antialiased;
+.dark {
+  --cor-fundo: #09090b;
+  --cor-superficie: #131316;
+  --cor-superficie-2: #1c1c21;
+  --cor-borda: #2a2a31;
+  --cor-texto: #fafafa;
+  --cor-texto-suave: #a1a1aa;
+
+  --cor-destaque: #818cf8;
+  --cor-destaque-texto: #10101a;
+  --cor-destaque-suave: #1e1b3a;
+
+  --cor-positivo: #4ade80;
+  --cor-positivo-suave: #0d2818;
+  --cor-negativo: #f87171;
+  --cor-negativo-suave: #2b1214;
+  --cor-atencao: #fbbf24;
+}
+
+/*
+ * `inline` faz os utilitários apontarem para as variáveis em tempo de execução, e é o que
+ * permite trocar o tema sem recompilar o CSS.
+ */
+@theme inline {
+  --color-fundo: var(--cor-fundo);
+  --color-superficie: var(--cor-superficie);
+  --color-superficie-2: var(--cor-superficie-2);
+  --color-borda: var(--cor-borda);
+  --color-texto: var(--cor-texto);
+  --color-texto-suave: var(--cor-texto-suave);
+  --color-destaque: var(--cor-destaque);
+  --color-destaque-texto: var(--cor-destaque-texto);
+  --color-destaque-suave: var(--cor-destaque-suave);
+  --color-positivo: var(--cor-positivo);
+  --color-positivo-suave: var(--cor-positivo-suave);
+  --color-negativo: var(--cor-negativo);
+  --color-negativo-suave: var(--cor-negativo-suave);
+  --color-atencao: var(--cor-atencao);
+
+  --radius-padrao: var(--raio);
+
+  --font-sans:
+    'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--cor-fundo);
+    color: var(--cor-texto);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Foco sempre visível: navegação por teclado é piso de acessibilidade, não extra. */
+  :focus-visible {
+    outline: 2px solid var(--cor-destaque);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Respeita quem pediu menos movimento no sistema. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /*
+   * Coluna de valores alinhada. Sem `tabular-nums` os dígitos têm larguras diferentes e a
+   * coluna dança de linha em linha, o que torna a conferência de fatura desagradável.
+   */
+  .dinheiro {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Área segura do iPhone: sem isto a barra inferior fica sob o indicador de home. */
+  .pb-seguro {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }

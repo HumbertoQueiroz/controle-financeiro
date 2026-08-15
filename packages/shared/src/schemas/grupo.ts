@@ -109,6 +109,8 @@ export const fechamentoSchema = previaDoFechamentoSchema.extend({
 
 export type CriarGrupo = z.infer<typeof criarGrupoSchema>;
 export type Grupo = z.infer<typeof grupoSchema>;
+export type Membro = z.infer<typeof membroSchema>;
+export type Evento = z.infer<typeof eventoSchema>;
 export type CriarEvento = z.infer<typeof criarEventoSchema>;
 export type CriarDespesa = z.infer<typeof criarDespesaSchema>;
 export type Despesa = z.infer<typeof despesaSchema>;
