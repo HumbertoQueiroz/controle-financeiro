@@ -159,7 +159,8 @@ describe('os três modos do relatório', () => {
 
     await app.prisma.obligation.updateMany({
       where: { debtorId: pessoaDaAna.id },
-      data: { settledAmount: 300, status: 'SETTLED' },
+      // A data da baixa acompanha o status: o banco exige a coerência entre as duas.
+      data: { settledAmount: 300, status: 'SETTLED', settledAt: new Date('2026-08-20') },
     });
 
     const abertas = (

@@ -20,6 +20,7 @@ const ROTULO_DA_ORIGEM: Record<ItemDoRelatorio['origem'], string> = {
   INVOICE: 'Fatura',
   CARD_ENTRY: 'Repasse',
   GROUP_EXPENSE: 'Rateio',
+  RECURRENCE: 'Recorrente',
   MANUAL: 'Manual',
 };
 
@@ -71,10 +72,10 @@ export function Relatorios() {
             onClick={() => setModo(item.valor)}
             aria-pressed={modo === item.valor}
             className={cn(
-              'min-h-11 rounded-full border px-4 text-sm',
+              'min-h-11 rounded-full border px-4 text-sm transition-colors',
               modo === item.valor
-                ? 'border-destaque bg-destaque-suave font-medium text-destaque'
-                : 'border-borda text-texto-suave hover:bg-superficie-2',
+                ? 'border-destaque bg-destaque-suave font-medium text-destaque hover:opacity-90'
+                : 'border-borda text-texto-suave hover:bg-superficie-2 hover:text-texto',
             )}
           >
             {item.rotulo}
@@ -86,10 +87,10 @@ export function Relatorios() {
           onClick={() => setSituacao(situacao === 'ABERTAS' ? 'TODAS' : 'ABERTAS')}
           aria-pressed={situacao === 'TODAS'}
           className={cn(
-            'ml-auto min-h-11 rounded-full border px-4 text-sm',
+            'ml-auto min-h-11 rounded-full border px-4 text-sm transition-colors',
             situacao === 'TODAS'
-              ? 'border-destaque bg-destaque-suave font-medium text-destaque'
-              : 'border-borda text-texto-suave hover:bg-superficie-2',
+              ? 'border-destaque bg-destaque-suave font-medium text-destaque hover:opacity-90'
+              : 'border-borda text-texto-suave hover:bg-superficie-2 hover:text-texto',
           )}
         >
           Incluir quitadas

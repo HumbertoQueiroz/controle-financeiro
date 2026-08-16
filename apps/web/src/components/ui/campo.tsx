@@ -2,8 +2,14 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react
 import { useId } from 'react';
 import { cn } from '@/lib/utils';
 
+/**
+ * Campo de formulário também reage ao ponteiro.
+ *
+ * Sem hover, um `select` parece texto até ser clicado — e numa tela de classificação com
+ * dezenas deles, é o hover que diz onde dá para mexer.
+ */
 const baseDoControle =
-  'min-h-11 w-full rounded-[--radius-padrao] border border-borda bg-superficie px-3 text-sm text-texto placeholder:text-texto-suave disabled:opacity-60';
+  'min-h-11 w-full rounded-padrao border border-borda bg-superficie px-3 text-sm text-texto transition-colors placeholder:text-texto-suave hover:border-texto-suave disabled:pointer-events-none disabled:opacity-60';
 
 interface CampoProps {
   rotulo: string;
@@ -45,5 +51,5 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(baseDoControle, 'pr-8', className)} {...props} />;
+  return <select className={cn(baseDoControle, 'cursor-pointer pr-8', className)} {...props} />;
 }

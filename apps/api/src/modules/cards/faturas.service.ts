@@ -1,5 +1,6 @@
-import { Prisma, type ObligationStatus, type PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { ErroNaoEncontrado } from '../../lib/erros.js';
+import { recalcularSituacao } from '../entries/pagamentos.service.js';
 
 type Transacao = Prisma.TransactionClient;
 
@@ -16,6 +17,39 @@ export function calcularVencimento(mesDeReferencia: string, diaDeVencimento: num
   return new Date(Date.UTC(ano!, mes! - 1, Math.min(diaDeVencimento, ultimoDia)));
 }
 
+/** Mesma regra do vencimento: o dia de fechamento cai no último dia em meses curtos. */
+export function calcularFechamento(mesDeReferencia: string, diaDeFechamento: number): Date {
+  return calcularVencimento(mesDeReferencia, diaDeFechamento);
+}
+
+/**
+ * Descobre em qual fatura uma compra entra.
+ *
+ * Compra feita **depois** do fechamento do mês vai para a fatura seguinte — é a regra que
+ * todo cartão usa e a que mais confunde quem confere o extrato, porque a compra do dia 28
+ * aparece na fatura do mês que vem.
+ */
+export function faturaDaCompra(dataDaCompra: Date, diaDeFechamento: number): string {
+  const ano = dataDaCompra.getUTCFullYear();
+  const mes = dataDaCompra.getUTCMonth();
+  const dia = dataDaCompra.getUTCDate();
+
+  const ultimoDiaDoMes = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+  const fechamento = Math.min(diaDeFechamento, ultimoDiaDoMes);
+
+  const referencia = new Date(Date.UTC(ano, dia > fechamento ? mes + 1 : mes, 1));
+
+  return `${referencia.getUTCFullYear()}-${String(referencia.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Soma meses a um mês no formato YYYY-MM. */
+export function somarMeses(mes: string, quantidade: number): string {
+  const [ano, numero] = mes.split('-').map(Number);
+  const data = new Date(Date.UTC(ano!, numero! - 1 + quantidade, 1));
+
+  return `${data.getUTCFullYear()}-${String(data.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 /**
  * Encontra ou cria a fatura do mês, sempre em transação com quem chamou.
  *
@@ -27,14 +61,15 @@ export async function obterOuCriarFatura(
   tx: Transacao,
   cartaoId: string,
   mesDeReferencia: string,
-  diaDeVencimento: number,
+  cartao: { dueDay: number; closingDay: number },
 ) {
   return tx.invoice.upsert({
     where: { cardId_referenceMonth: { cardId: cartaoId, referenceMonth: mesDeReferencia } },
     create: {
       cardId: cartaoId,
       referenceMonth: mesDeReferencia,
-      dueDate: calcularVencimento(mesDeReferencia, diaDeVencimento),
+      closingDate: calcularFechamento(mesDeReferencia, cartao.closingDay),
+      dueDate: calcularVencimento(mesDeReferencia, cartao.dueDay),
     },
     update: {},
   });
@@ -61,42 +96,21 @@ export async function sincronizarFatura(tx: Transacao, faturaId: string) {
     },
   });
 
-  const [somaLancamentos, somaPagamentos] = await Promise.all([
-    tx.invoiceEntry.aggregate({ where: { invoiceId: faturaId }, _sum: { amount: true } }),
-    tx.invoicePayment.aggregate({ where: { invoiceId: faturaId }, _sum: { amount: true } }),
-  ]);
+  const somaLancamentos = await tx.invoiceEntry.aggregate({
+    where: { invoiceId: faturaId },
+    _sum: { amount: true },
+  });
 
   const total = somaLancamentos._sum.amount ?? new Prisma.Decimal(0);
-  const pago = somaPagamentos._sum.amount ?? new Prisma.Decimal(0);
 
   // Estorno pode deixar o total negativo (mais crédito que compra no mês). A obrigação
   // não aceita valor negativo, e nem faria sentido: não se "deve menos que zero".
   const totalDevido = total.isNegative() ? new Prisma.Decimal(0) : total;
-  const quitada = pago.greaterThanOrEqualTo(totalDevido) && totalDevido.greaterThan(0);
-
-  await tx.invoice.update({
-    where: { id: faturaId },
-    data: {
-      total,
-      // A fatura só vira PAID sozinha; fechar é decisão de quem administra o cartão.
-      ...(quitada && fatura.status === 'OPEN' ? { status: 'PAID' as const } : {}),
-    },
-  });
 
   const dono = await tx.person.findFirstOrThrow({
     where: { userId: fatura.card.ownerUserId, ownerId: fatura.card.ownerUserId },
     select: { id: true },
   });
-
-  const descricao = `Fatura ${fatura.card.name} ${fatura.referenceMonth}`;
-  // Nunca liquidar mais que o devido: o banco tem CHECK impedindo, e pagar a mais
-  // acontece de verdade quando o CSV traz o pagamento de um mês junto com o do outro.
-  const liquidado = pago.greaterThan(totalDevido) ? totalDevido : pago;
-  const status: ObligationStatus = quitada
-    ? 'SETTLED'
-    : liquidado.greaterThan(0)
-      ? 'PARTIAL'
-      : 'OPEN';
 
   const existente = await tx.obligation.findFirst({
     where: { originType: 'INVOICE', originId: faturaId },
@@ -104,28 +118,46 @@ export async function sincronizarFatura(tx: Transacao, faturaId: string) {
   });
 
   const dados = {
-    description: descricao,
+    description: `Fatura ${fatura.card.name} ${fatura.referenceMonth}`,
     amount: totalDevido,
-    settledAmount: liquidado,
     dueDate: fatura.dueDate,
-    status,
     paymentMethod: 'CREDIT_CARD' as const,
   };
 
-  if (existente) {
-    await tx.obligation.update({ where: { id: existente.id }, data: dados });
-  } else {
-    await tx.obligation.create({
-      data: {
-        ...dados,
-        debtorId: dono.id,
-        // Nulo porque a contraparte é a instituição do cartão, não uma pessoa.
-        creditorId: null,
-        originType: 'INVOICE',
-        originId: faturaId,
-      },
-    });
-  }
+  // A situação da obrigação não é decidida aqui: ela é recalculada a partir dos
+  // pagamentos, que são a fonte única da verdade sobre o que foi pago.
+  const obrigacaoId = existente
+    ? (await tx.obligation.update({ where: { id: existente.id }, data: dados })).id
+    : (
+        await tx.obligation.create({
+          data: {
+            ...dados,
+            debtorId: dono.id,
+            // Nulo porque a contraparte é a instituição do cartão, não uma pessoa.
+            creditorId: null,
+            originType: 'INVOICE',
+            originId: faturaId,
+          },
+        })
+      ).id;
+
+  await recalcularSituacao(tx, obrigacaoId);
+
+  const quitada = await tx.obligation.findUniqueOrThrow({
+    where: { id: obrigacaoId },
+    select: { status: true },
+  });
+
+  await tx.invoice.update({
+    where: { id: faturaId },
+    data: {
+      total,
+      // A fatura só vira PAID sozinha; fechar é decisão de quem administra o cartão.
+      ...(quitada.status === 'SETTLED' && fatura.status === 'OPEN'
+        ? { status: 'PAID' as const }
+        : {}),
+    },
+  });
 }
 
 /**
@@ -160,7 +192,8 @@ export async function sincronizarRepasse(tx: Transacao, lancamentoId: string) {
       // registro de um dinheiro que trocou de mãos.
       await tx.obligation.update({
         where: { id: existente.id },
-        data: { status: 'CANCELLED' },
+        // Cancelada deixa de ter data de baixa: ela não foi paga, foi desfeita.
+        data: { status: 'CANCELLED', settledAt: null },
       });
     }
 
@@ -190,6 +223,8 @@ export async function sincronizarRepasse(tx: Transacao, lancamentoId: string) {
         debtorId: lancamento.forwardedToPersonId,
         creditorId: dono.id,
         status: existente.settledAmount.greaterThan(0) ? 'PARTIAL' : 'OPEN',
+        // Reabrir o repasse limpa a baixa: o que estava quitado voltou a ser devido.
+        settledAt: null,
       },
     });
 

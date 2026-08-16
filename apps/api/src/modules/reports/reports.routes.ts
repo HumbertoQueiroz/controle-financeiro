@@ -1,16 +1,36 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { filtroDoRelatorioSchema, relatorioSchema, resumoSchema } from '@controle/shared';
+import {
+  filtroDoRelatorioSchema,
+  mesDeReferenciaSchema,
+  relatorioSchema,
+  resumoSchema,
+} from '@controle/shared';
 import { z } from 'zod';
 import * as service from './reports.service.js';
+import { gerarResumo } from '../entries/orcamento.service.js';
+
+/** Mês corrente em AAAA-MM, usado quando a chamada não informa um. */
+function mesAtual(): string {
+  const agora = new Date();
+
+  return `${agora.getUTCFullYear()}-${String(agora.getUTCMonth() + 1).padStart(2, '0')}`;
+}
 
 export async function reportsRoutes(app: FastifyInstance) {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
 
   rotas.get(
     '/resumo',
-    { preHandler: app.requireAuth, schema: { response: { 200: resumoSchema } } },
-    async (request) => service.gerarResumo(app.prisma, request.usuario!.id),
+    {
+      preHandler: app.requireAuth,
+      schema: {
+        querystring: z.object({ mes: mesDeReferenciaSchema.optional() }),
+        response: { 200: resumoSchema },
+      },
+    },
+    async (request) =>
+      gerarResumo(app.prisma, request.usuario!.id, request.query.mes ?? mesAtual()),
   );
 
   rotas.get(
@@ -25,12 +45,14 @@ export async function reportsRoutes(app: FastifyInstance) {
         response: { 200: relatorioSchema },
       },
     },
-    async (request) =>
-      service.gerarRelatorio(
-        app.prisma,
-        request.params.ownerId,
-        request.escopoDeRelatorio!,
-        request.query,
+    async (request, reply) =>
+      reply.send(
+        await service.gerarRelatorio(
+          app.prisma,
+          request.params.ownerId,
+          request.escopoDeRelatorio!,
+          request.query,
+        ),
       ),
   );
 }

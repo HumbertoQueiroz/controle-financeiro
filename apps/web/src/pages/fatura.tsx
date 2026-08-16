@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
-import type { Lancamento, Pessoa } from '@controle/shared';
+import type { LancamentoDaFatura, Pessoa } from '@controle/shared';
 import { api } from '@/lib/api';
 import { formatarData } from '@/lib/utils';
 import { Select } from '@/components/ui/campo';
@@ -15,7 +15,7 @@ export function DetalheDaFatura() {
 
   const lancamentos = useQuery({
     queryKey: ['lancamentos', id],
-    queryFn: () => api.get<Lancamento[]>(`/faturas/${id}/lancamentos`),
+    queryFn: () => api.get<LancamentoDaFatura[]>(`/faturas/${id}/lancamentos`),
   });
 
   const pessoas = useQuery({ queryKey: ['pessoas'], queryFn: () => api.get<Pessoa[]>('/pessoas') });
@@ -29,7 +29,7 @@ export function DetalheDaFatura() {
     },
   });
 
-  const colunas: ColunaDaLista<Lancamento>[] = [
+  const colunas: ColunaDaLista<LancamentoDaFatura>[] = [
     {
       chave: 'descricao',
       titulo: 'Descrição',

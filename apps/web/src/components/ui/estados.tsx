@@ -16,7 +16,7 @@ export function Carregando({ linhas = 3 }: { linhas?: number }) {
           key={indice}
           // Skeleton com a altura da linha real, não spinner de página inteira: o layout
           // não salta quando o conteúdo chega, e é a maior causa de CLS neste app.
-          className="h-16 animate-pulse rounded-[--radius-padrao] bg-superficie-2"
+          className="h-16 animate-pulse rounded-padrao bg-superficie-2"
         />
       ))}
     </div>

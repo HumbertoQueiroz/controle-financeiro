@@ -131,7 +131,7 @@ export function DetalheDoGrupo() {
             {eventos.data.map((evento) => (
               <li key={evento.id}>
                 <Link to={`/app/roles/${evento.id}`}>
-                  <Cartao className="flex min-h-14 items-center justify-between gap-3 p-4 hover:bg-superficie-2">
+                  <Cartao className="flex min-h-14 items-center justify-between gap-3 p-4 transition-colors hover:bg-superficie-2">
                     <div className="flex flex-col gap-0.5">
                       <p className="font-medium text-texto">{evento.nome}</p>
                       <p className="text-xs text-texto-suave">{formatarData(evento.data)}</p>

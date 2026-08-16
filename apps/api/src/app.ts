@@ -18,6 +18,7 @@ import { sharingRoutes } from './modules/sharing/sharing.routes.js';
 import { cardsRoutes } from './modules/cards/cards.routes.js';
 import { groupsRoutes } from './modules/groups/groups.routes.js';
 import { reportsRoutes } from './modules/reports/reports.routes.js';
+import { entriesRoutes } from './modules/entries/entries.routes.js';
 
 /**
  * Monta a aplicação sem escutar porta.
@@ -54,6 +55,7 @@ export async function buildApp() {
   await app.register(cardsRoutes);
   await app.register(groupsRoutes);
   await app.register(reportsRoutes);
+  await app.register(entriesRoutes);
 
   return app;
 }

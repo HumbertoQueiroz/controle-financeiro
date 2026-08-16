@@ -9,14 +9,17 @@ import { cn } from '@/lib/utils';
  * usado no celular na maior parte do tempo.
  */
 const estilos = cva(
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-[--radius-padrao] px-4 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-padrao px-4 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
+      // Toda variante tem hover: um controle que não reage ao ponteiro parece desligado,
+      // e no desktop é o hover que confirma "isto é clicável" antes do clique.
       variante: {
-        primaria: 'bg-destaque text-destaque-texto hover:opacity-90',
-        secundaria: 'border border-borda bg-superficie text-texto hover:bg-superficie-2',
-        fantasma: 'text-texto hover:bg-superficie-2',
-        destrutiva: 'bg-negativo text-white hover:opacity-90',
+        primaria: 'bg-destaque text-destaque-texto hover:opacity-90 active:opacity-80',
+        secundaria:
+          'border border-borda bg-superficie text-texto hover:border-texto-suave hover:bg-superficie-2',
+        fantasma: 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
+        destrutiva: 'bg-negativo text-white hover:opacity-90 active:opacity-80',
       },
       tamanho: {
         padrao: '',

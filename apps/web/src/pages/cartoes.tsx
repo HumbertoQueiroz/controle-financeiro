@@ -40,6 +40,7 @@ export function Cartoes() {
       finalDoCartao: String(dados.get('finalDoCartao') ?? '') || undefined,
       diaDeFechamento: Number(dados.get('diaDeFechamento')),
       diaDeVencimento: Number(dados.get('diaDeVencimento')),
+      compartilhado: dados.get('compartilhado') === 'on',
     });
   };
 
@@ -73,7 +74,7 @@ export function Cartoes() {
           {lista.data.map((cartao) => (
             <li key={cartao.id}>
               <Link to={`/app/cartoes/${cartao.id}`}>
-                <Cartao className="flex min-h-14 items-center justify-between gap-3 p-4 hover:bg-superficie-2">
+                <Cartao className="flex min-h-14 items-center justify-between gap-3 p-4 transition-colors hover:bg-superficie-2">
                   <div className="flex flex-col gap-0.5">
                     <p className="font-medium text-texto">{cartao.nome}</p>
                     <p className="text-xs text-texto-suave">
@@ -131,6 +132,11 @@ export function Cartoes() {
               </Campo>
             </div>
           </div>
+
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-padrao px-1 text-sm text-texto transition-colors hover:bg-superficie-2">
+            <input type="checkbox" name="compartilhado" className="h-4 w-4" />
+            Cartão compartilhado com outras pessoas
+          </label>
 
           {erro && (
             <p role="alert" className="text-sm text-negativo">

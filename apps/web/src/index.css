@@ -28,7 +28,8 @@
   --cor-negativo-suave: #fef2f2;
   --cor-atencao: #a16207;
 
-  --raio: 0.75rem;
+  /* 8px: arredonda sem parecer pílula. Vale para campo, botão e cartão. */
+  --raio: 0.5rem;
 }
 
 .dark {
@@ -70,6 +71,13 @@
   --color-negativo-suave: var(--cor-negativo-suave);
   --color-atencao: var(--cor-atencao);
 
+  /*
+   * Gera a classe `rounded-padrao`.
+   *
+   * Use `rounded-padrao`, e nunca `rounded-[--radius-padrao]`: essa segunda forma produz
+   * `border-radius: --radius-padrao`, que é CSS inválido e o navegador descarta em
+   * silêncio — o resultado é canto reto sem nenhum aviso.
+   */
   --radius-padrao: var(--raio);
 
   --font-sans:

@@ -19,7 +19,13 @@ import { MetadadosDaRota } from '@/publico/metadados-da-rota';
  */
 const Cadastro = lazy(() => import('@/pages/cadastro').then((m) => ({ default: m.Cadastro })));
 const Convite = lazy(() => import('@/pages/convite').then((m) => ({ default: m.Convite })));
-const Painel = lazy(() => import('@/pages/painel').then((m) => ({ default: m.Painel })));
+const Orcamento = lazy(() => import('@/pages/orcamento').then((m) => ({ default: m.Orcamento })));
+const ContasAReceber = lazy(() =>
+  import('@/pages/contas').then((m) => ({ default: m.ContasAReceber })),
+);
+const ContasAPagar = lazy(() =>
+  import('@/pages/contas').then((m) => ({ default: m.ContasAPagar })),
+);
 const Cartoes = lazy(() => import('@/pages/cartoes').then((m) => ({ default: m.Cartoes })));
 const DetalheDoCartao = lazy(() =>
   import('@/pages/cartao').then((m) => ({ default: m.DetalheDoCartao })),
@@ -35,6 +41,10 @@ const DetalheDoRole = lazy(() =>
   import('@/pages/role').then((m) => ({ default: m.DetalheDoRole })),
 );
 const Pessoas = lazy(() => import('@/pages/pessoas').then((m) => ({ default: m.Pessoas })));
+const Mais = lazy(() => import('@/pages/mais').then((m) => ({ default: m.Mais })));
+const Parcelamentos = lazy(() =>
+  import('@/pages/parcelamentos').then((m) => ({ default: m.Parcelamentos })),
+);
 const Compartilhar = lazy(() =>
   import('@/pages/compartilhar').then((m) => ({ default: m.Compartilhar })),
 );
@@ -95,14 +105,19 @@ export function App() {
                   <Route path="/app/termos" element={<AceitarTermos />} />
 
                   <Route path="/app" element={<AppShell />}>
-                    <Route index element={<Painel />} />
+                    {/* O orçamento do mês é a primeira pergunta de quem abre o app. */}
+                    <Route index element={<Orcamento />} />
+                    <Route path="a-receber" element={<ContasAReceber />} />
+                    <Route path="a-pagar" element={<ContasAPagar />} />
                     <Route path="cartoes" element={<Cartoes />} />
                     <Route path="cartoes/:id" element={<DetalheDoCartao />} />
                     <Route path="faturas/:id" element={<DetalheDaFatura />} />
+                    <Route path="parcelamentos" element={<Parcelamentos />} />
                     <Route path="grupos" element={<Grupos />} />
                     <Route path="grupos/:id" element={<DetalheDoGrupo />} />
                     <Route path="roles/:id" element={<DetalheDoRole />} />
                     <Route path="pessoas" element={<Pessoas />} />
+                    <Route path="mais" element={<Mais />} />
                     <Route path="compartilhar" element={<Compartilhar />} />
                     <Route path="relatorios" element={<Relatorios />} />
                     <Route path="conta" element={<Conta />} />

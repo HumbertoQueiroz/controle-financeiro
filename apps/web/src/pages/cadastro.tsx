@@ -83,7 +83,10 @@ export function Cadastro() {
 
         <p className="text-center text-sm text-texto-suave">
           Já tem conta?{' '}
-          <Link to="/entrar" className="font-medium text-destaque underline">
+          <Link
+            to="/entrar"
+            className="font-medium text-destaque underline transition-opacity hover:opacity-80"
+          >
             Entrar
           </Link>
         </p>

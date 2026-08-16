@@ -41,3 +41,18 @@ export function mesAtual(): string {
 
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
 }
+
+/** Hoje em AAAA-MM-DD, para preencher campo de data. */
+export function hoje(): string {
+  const agora = new Date();
+
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+}
+
+/** Vai para o mês anterior ou seguinte, em AAAA-MM. */
+export function deslocarMes(mes: string, passos: number): string {
+  const [ano, numero] = mes.split('-').map(Number);
+  const data = new Date(Date.UTC(ano!, numero! - 1 + passos, 1));
+
+  return `${data.getUTCFullYear()}-${String(data.getUTCMonth() + 1).padStart(2, '0')}`;
+}

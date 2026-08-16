@@ -227,11 +227,18 @@ export async function fecharPeriodo(
 
     // As obrigações individuais são substituídas pelo plano compensado: elas foram
     // absorvidas pelas transferências, e mantê-las abertas cobraria duas vezes.
+    //
+    // A baixa é datada no fechamento, e não no vencimento de cada despesa: foi o
+    // fechamento que resolveu quem paga quem, e é ele o momento em que aquelas dívidas
+    // deixaram de existir individualmente.
+    const fechadoEm = fechamento.closedAt ?? new Date();
+
     for (const obrigacao of apuracao.obrigacoes) {
       await tx.obligation.update({
         where: { id: obrigacao.id },
         data: {
           status: 'SETTLED',
+          settledAt: fechadoEm,
           settledAmount: { increment: deCentavos(obrigacao.restanteEmCentavos) },
         },
       });

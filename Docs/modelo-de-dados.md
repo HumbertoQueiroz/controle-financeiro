@@ -36,6 +36,17 @@ lançamento duplicaria a dívida, já que a fatura é o agregado delas.
 Todo valor monetário é `Decimal(14,2)`. Nunca `Float`: erro de arredondamento em
 fechamento de saldo é bug que aparece como centavo faltando e ninguém consegue explicar.
 
+### Duas datas por lançamento
+
+`dueDate` é o vencimento e `settledAt` é a baixa. Separá-las é o que permite distinguir
+previsto de realizado — uma conta vencida em agosto e paga em setembro pertence ao
+orçamento de agosto e ao caixa de setembro, e com uma data só uma dessas leituras seria
+mentira. Detalhes em [lancamentos-e-orcamento.md](lancamentos-e-orcamento.md).
+
+`debtorId` aceita nulo, com `counterpartyLabel` para o nome em texto livre: quem paga o
+salário é o empregador, e obrigar a cadastrá-lo como pessoa seria atrito sem ganho. Um
+`CHECK` exige que ao menos um dos dois lados exista.
+
 ## `Person` e `User` são coisas diferentes
 
 `Person` é a contraparte de qualquer obrigação e existe sozinha. `User` é quem autentica.

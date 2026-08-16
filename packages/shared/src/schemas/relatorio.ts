@@ -22,7 +22,7 @@ export const itemDoRelatorioSchema = z.object({
   vencimento: z.date(),
   status: z.enum(['OPEN', 'PARTIAL', 'SETTLED', 'CANCELLED']),
   formaDePagamento: formaDePagamentoSchema,
-  origem: z.enum(['INVOICE', 'CARD_ENTRY', 'GROUP_EXPENSE', 'MANUAL']),
+  origem: z.enum(['INVOICE', 'CARD_ENTRY', 'GROUP_EXPENSE', 'RECURRENCE', 'MANUAL']),
   /** A outra ponta. Nulo quando é a instituição do cartão, e não uma pessoa. */
   contraparte: z.string().nullable(),
 });

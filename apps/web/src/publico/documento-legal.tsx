@@ -28,7 +28,10 @@ export function DocumentoLegal({ documento }: { documento: keyof typeof DOCUMENT
   return (
     <div className="flex min-h-dvh flex-col bg-fundo">
       <header className="flex items-center gap-4 border-b border-borda px-5 py-4">
-        <a href="/" className="text-sm font-semibold text-texto">
+        <a
+          href="/"
+          className="min-h-11 py-2 text-sm font-semibold text-texto transition-colors hover:text-destaque"
+        >
           Controle Financeiro
         </a>
       </header>
@@ -43,7 +46,10 @@ export function DocumentoLegal({ documento }: { documento: keyof typeof DOCUMENT
       </main>
 
       <footer className="border-t border-borda px-5 py-6 text-center">
-        <a href="/" className="text-sm text-texto-suave underline">
+        <a
+          href="/"
+          className="inline-block min-h-11 py-2 text-sm text-texto-suave underline transition-colors hover:text-texto"
+        >
           Voltar ao início
         </a>
       </footer>

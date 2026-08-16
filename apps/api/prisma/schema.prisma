@@ -64,6 +64,9 @@ enum OriginType {
   /// Um lançamento repassado a terceiro — o que o dono tem a receber daquela pessoa.
   CARD_ENTRY
   GROUP_EXPENSE
+  /// Parcela gerada por uma recorrência: salário, aluguel, assinatura.
+  RECURRENCE
+  /// Lançado à mão, avulso.
   MANUAL
 }
 
@@ -110,6 +113,7 @@ model User {
   cards            CreditCard[]
   groups           Group[]
   importBatches    ImportBatch[]
+  recorrencias     Recurrence[]
 
   @@index([email])
 }
@@ -145,9 +149,11 @@ model Person {
   @@unique([ownerId, userId])
 
   convites              ReportInvite[]
+  recorrencias          Recurrence[]
   obligationsAsDebtor   Obligation[]         @relation("Devedor")
   obligationsAsCreditor Obligation[]         @relation("Credor")
   forwardedEntries      InvoiceEntry[]
+  parcelamentos         Installment[]
   groupMemberships      GroupMember[]
   expensesPaid          GroupExpense[]
   expenseShares         ExpenseShare[]
@@ -240,31 +246,97 @@ model TermsAcceptance {
 // ---------------------------------------------------------------------------
 
 model Obligation {
-  id            String  @id @default(uuid())
-  debtorId      String
+  id String @id @default(uuid())
+
+  /// Nulo quando a origem do dinheiro não é uma pessoa cadastrada — o caso do salário,
+  /// em que o pagador é o empregador e obrigar a cadastrá-lo como pessoa seria atrito
+  /// sem ganho. Ao menos um dos dois lados precisa existir (CHECK na migration).
+  debtorId   String?
   /// Nulo quando a contraparte é a instituição do cartão, e não uma pessoa.
-  creditorId    String?
+  creditorId String?
+  /// Nome da contraparte quando ela não é uma Person: "Salário", "Aluguel", "Nubank".
+  counterpartyLabel String?
+
   description   String
   amount        Decimal @db.Decimal(14, 2)
   settledAmount Decimal @default(0) @db.Decimal(14, 2)
 
-  dueDate       DateTime
+  /// As duas datas que controlam todo lançamento financeiro.
+  ///
+  /// `dueDate` é quando vence; `settledAt` é quando de fato foi pago ou recebido — a
+  /// baixa. Separá-las é o que permite distinguir "previsto" de "realizado": uma conta
+  /// vencida em agosto e paga em setembro pertence ao orçamento de agosto e ao caixa de
+  /// setembro, e com uma data só uma dessas leituras seria mentira.
+  dueDate   DateTime
+  settledAt DateTime?
+
   status        ObligationStatus @default(OPEN)
   paymentMethod PaymentMethod
   originType    OriginType
-  /// Id do InvoiceEntry ou do GroupExpense que originou esta obrigação.
+  /// Id do InvoiceEntry, da ExpenseShare ou da Invoice que originou esta obrigação.
   originId      String?
+
+  /// Preenchidos nas parcelas geradas por uma recorrência. O par é único, e é ele que
+  /// torna a geração do mês idempotente: abrir o orçamento duas vezes não duplica o salário.
+  recurrenceId   String?
+  referenceMonth String? @db.Char(7)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  debtor   Person  @relation("Devedor", fields: [debtorId], references: [id], onDelete: Cascade)
-  creditor Person? @relation("Credor", fields: [creditorId], references: [id], onDelete: Cascade)
+  debtor     Person?     @relation("Devedor", fields: [debtorId], references: [id], onDelete: Cascade)
+  creditor   Person?     @relation("Credor", fields: [creditorId], references: [id], onDelete: Cascade)
+  recurrence Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  payments   Payment[]
 
+  @@unique([recurrenceId, referenceMonth])
   @@index([debtorId, status])
   @@index([creditorId, status])
   @@index([originType, originId])
   @@index([dueDate])
+  @@index([settledAt])
+}
+
+/// De que lado do caixa o lançamento está.
+enum Direction {
+  /// Entra dinheiro: salário, reembolso, venda.
+  RECEIVABLE
+  /// Sai dinheiro: aluguel, assinatura, fatura.
+  PAYABLE
+}
+
+/// Lançamento que se repete todo mês — salário, aluguel, assinatura.
+///
+/// A recorrência é o molde, não o lançamento: as parcelas são obrigações de verdade,
+/// criadas mês a mês. Guardar só o molde e calcular na hora de exibir impediria dar baixa
+/// numa parcela, editar o valor de um mês específico, ou saber o que de fato aconteceu.
+model Recurrence {
+  id          String  @id @default(uuid())
+  ownerUserId String
+  /// A ficha do dono, que é quem recebe ou deve nas parcelas geradas.
+  personId    String
+  direction   Direction
+
+  description       String
+  amount            Decimal       @db.Decimal(14, 2)
+  paymentMethod     PaymentMethod
+  counterpartyLabel String?
+
+  /// Dia do vencimento. Meses curtos usam o último dia disponível.
+  dayOfMonth Int
+  /// Vigência em YYYY-MM. Sem `endsOn`, a recorrência não tem prazo.
+  startsOn   String  @db.Char(7)
+  endsOn     String? @db.Char(7)
+  active     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User         @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  person      Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+  obligations Obligation[]
+
+  @@index([ownerUserId, active])
 }
 
 // ---------------------------------------------------------------------------
@@ -283,13 +355,18 @@ model CreditCard {
   closingDay  Int
   dueDay      Int
   active      Boolean @default(true)
+  /// Cartão usado por mais de uma pessoa. Não muda a regra — todo lançamento continua
+  /// podendo ser repassado —, mas diz à tela de classificação que separar responsáveis é
+  /// o caso comum ali, e não a exceção.
+  shared      Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner    User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
-  imports  ImportBatch[]
+  owner        User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+  imports      ImportBatch[]
+  installments Installment[]
 
   @@index([ownerUserId])
 }
@@ -299,20 +376,88 @@ model Invoice {
   cardId String
   /// Mês de referência no formato YYYY-MM. String em vez de data para não depender de
   /// fuso: "a fatura de agosto" é a mesma em qualquer timezone, um DateTime não é.
-  referenceMonth String        @db.Char(7)
+  referenceMonth String @db.Char(7)
+  /// Quando a fatura fecha: depois disso a compra vai para a fatura seguinte. É o que
+  /// permite sugerir a fatura de destino de cada lançamento a partir da data da compra.
+  closingDate    DateTime
   dueDate        DateTime
-  status         InvoiceStatus @default(OPEN)
-  total          Decimal       @default(0) @db.Decimal(14, 2)
+
+  status InvoiceStatus @default(OPEN)
+  total  Decimal       @default(0) @db.Decimal(14, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  card     CreditCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  entries  InvoiceEntry[]
-  payments InvoicePayment[]
+  card    CreditCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  entries InvoiceEntry[]
 
   @@unique([cardId, referenceMonth])
   @@index([status])
+}
+
+/// Compra parcelada, com vida própria além das parcelas.
+///
+/// Existe como tabela para responder "quanto ainda devo desta compra" sem varrer faturas,
+/// e para reconhecer, na importação do mês seguinte, que aquela parcela já foi gerada —
+/// sem isso, cada extrato traria a mesma compra de novo e ela seria lançada em dobro.
+model Installment {
+  id     String @id @default(uuid())
+  cardId String
+
+  description String
+  /// Normalizada, e é por ela que a importação do mês seguinte reconhece o parcelamento.
+  descriptionKey String
+  /// Valor de cada parcela e quantidade total. O total da compra é o produto dos dois.
+  amount         Decimal @db.Decimal(14, 2)
+  installments   Int
+  /// Mês da primeira parcela lançada aqui — pode não ser a parcela 1, se o parcelamento
+  /// já estava em curso quando o cartão entrou no sistema.
+  firstMonth     String  @db.Char(7)
+  firstNumber    Int
+  /// Nulo significa "meu": a compra é do dono do cartão.
+  responsiblePersonId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  card        CreditCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  responsible Person?        @relation(fields: [responsiblePersonId], references: [id], onDelete: SetNull)
+  entries     InvoiceEntry[]
+
+  /// Um parcelamento por (cartão, descrição, quantidade, primeira parcela). É esta chave
+  /// que faz a reimportação reconhecer o que já existe em vez de criar outro plano.
+  @@unique([cardId, descriptionKey, installments, firstMonth])
+  @@index([cardId])
+}
+
+/// Pagamento de um título financeiro.
+///
+/// Tabela própria, e não um par de colunas na obrigação, porque um título pode ser pago em
+/// partes e em datas diferentes — metade no dia 5, o resto no dia 20. Com colunas, a
+/// segunda data sobrescreveria a primeira e o histórico do que foi pago se perderia.
+///
+/// A observação existe porque a explicação costuma ser o que resolve a dúvida meses
+/// depois: "paguei em dinheiro", "o Bruno me pagou por Pix".
+model Payment {
+  id           String   @id @default(uuid())
+  obligationId String
+  amount       Decimal  @db.Decimal(14, 2)
+  paidAt       DateTime
+  note         String?
+
+  /// Preenchidos quando o pagamento veio do CSV da fatura, e é o par com a obrigação que
+  /// torna a reimportação idempotente.
+  dedupeHash    String?
+  importBatchId String?
+
+  createdAt DateTime @default(now())
+
+  obligation  Obligation   @relation(fields: [obligationId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([obligationId, dedupeHash])
+  @@index([obligationId, paidAt])
+  @@index([paidAt])
 }
 
 model InvoiceEntry {
@@ -324,6 +469,11 @@ model InvoiceEntry {
 
   installmentNumber Int?
   installmentTotal  Int?
+  /// Liga a parcela ao plano de parcelamento que a gerou.
+  installmentId     String?
+  /// Verdadeiro nas parcelas futuras criadas na importação, que ainda não apareceram em
+  /// nenhum extrato. É o que permite reconhecê-las quando o extrato do mês chegar.
+  projected         Boolean @default(false)
 
   /// Chave de deduplicação derivada da linha do CSV. O par (invoiceId, dedupeHash) é
   /// único no banco: é isso que torna a reimportação da mesma fatura idempotente mesmo
@@ -339,28 +489,12 @@ model InvoiceEntry {
   invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   forwardedTo Person?      @relation(fields: [forwardedToPersonId], references: [id], onDelete: SetNull)
   importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  installment Installment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
 
   @@unique([invoiceId, dedupeHash])
+  @@index([installmentId])
   @@index([invoiceId, date])
   @@index([forwardedToPersonId])
-}
-
-model InvoicePayment {
-  id            String        @id @default(uuid())
-  invoiceId     String
-  date          DateTime
-  amount        Decimal       @db.Decimal(14, 2)
-  paymentMethod PaymentMethod @default(CASH)
-  dedupeHash    String
-  importBatchId String?
-
-  createdAt DateTime @default(now())
-
-  invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-
-  @@unique([invoiceId, dedupeHash])
-  @@index([invoiceId])
 }
 
 /// Auditoria de cada importação de CSV.
@@ -386,7 +520,7 @@ model ImportBatch {
   card     CreditCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
   user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   entries  InvoiceEntry[]
-  payments InvoicePayment[]
+  payments Payment[]
 
   @@index([cardId, createdAt])
 }

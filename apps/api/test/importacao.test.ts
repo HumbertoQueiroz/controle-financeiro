@@ -8,23 +8,34 @@ import { criarApp, criarUsuario, logar, type App } from './helpers.js';
 const fixtures = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/csv');
 
 let app: App;
+let cookie: string;
+let cartaoId: string;
 
 beforeEach(async () => {
   await limparBanco();
   app = await criarApp();
+  await criarUsuario(app, { email: 'ana@exemplo.com', nome: 'Ana' });
+  cookie = await logar(app, 'ana@exemplo.com');
+
+  const cartao = await app.inject({
+    method: 'POST',
+    url: '/cartoes',
+    headers: { cookie },
+    payload: { nome: 'Nubank', diaDeFechamento: 25, diaDeVencimento: 5, compartilhado: true },
+  });
+
+  cartaoId = cartao.json().id;
 });
 
 afterEach(() => app.close());
 
 /** Monta o corpo multipart à mão: o inject não tem helper para upload. */
-function corpoMultipart(nomeDoArquivo: string, mesDeReferencia: string) {
+function corpoMultipart(nomeDoArquivo: string) {
   const limite = '----ControleFinanceiroTeste';
   const conteudo = readFileSync(resolve(fixtures, nomeDoArquivo));
 
   const cabecalho = Buffer.from(
     `--${limite}\r\n` +
-      `Content-Disposition: form-data; name="mesDeReferencia"\r\n\r\n${mesDeReferencia}\r\n` +
-      `--${limite}\r\n` +
       `Content-Disposition: form-data; name="arquivo"; filename="${nomeDoArquivo}"\r\n` +
       'Content-Type: text/csv\r\n\r\n',
   );
@@ -35,312 +46,204 @@ function corpoMultipart(nomeDoArquivo: string, mesDeReferencia: string) {
   };
 }
 
-async function prepararCartao(app: App) {
-  await criarUsuario(app, { email: 'ana@exemplo.com', nome: 'Ana' });
-  const cookie = await logar(app, 'ana@exemplo.com');
-
-  const cartao = await app.inject({
-    method: 'POST',
-    url: '/cartoes',
-    headers: { cookie },
-    payload: { nome: 'Nubank', diaDeFechamento: 25, diaDeVencimento: 5 },
-  });
-
-  return { cookie, cartaoId: cartao.json().id as string };
-}
-
-async function importar(app: App, cookie: string, cartaoId: string, arquivo: string, mes: string) {
-  const { headers, payload } = corpoMultipart(arquivo, mes);
+function analisar(arquivo: string, cookieDoUsuario = cookie, cartao = cartaoId) {
+  const { headers, payload } = corpoMultipart(arquivo);
 
   return app.inject({
     method: 'POST',
-    url: `/cartoes/${cartaoId}/importacoes`,
-    headers: { ...headers, cookie },
+    url: `/cartoes/${cartao}/importacoes/previa`,
+    headers: { ...headers, cookie: cookieDoUsuario },
     payload,
   });
 }
 
-describe('importação de fatura', () => {
-  it('importa os lançamentos e calcula o total', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
+interface LinhaDaPrevia {
+  chave: string;
+  data: string;
+  descricao: string;
+  valor: string;
+  faturaSugerida: string;
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
+}
 
-    const resposta = await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    expect(resposta.statusCode).toBe(201);
-    expect(resposta.json()).toMatchObject({
-      layout: 'nubank',
-      lancamentosInseridos: 5,
-      lancamentosIgnorados: 0,
-    });
-
-    // 120,50 + 12,00 + 12,00 + 89,90 - 45,00 (estorno reduz o total)
-    expect(resposta.json().totalDaFatura).toBe('189.4');
+/** Confirma aceitando as sugestões da prévia, com o responsável que for informado. */
+function confirmar(
+  previa: {
+    lancamentos: LinhaDaPrevia[];
+    novosParcelamentos: LinhaDaPrevia[];
+    pagamentos: LinhaDaPrevia[];
+  },
+  opcoes: {
+    mesSelecionado: string;
+    responsaveis?: Record<string, string | null>;
+    divergenciaAceita?: boolean;
+  },
+) {
+  const classificar = (linha: LinhaDaPrevia) => ({
+    chave: linha.chave,
+    data: linha.data,
+    descricao: linha.descricao,
+    valor: linha.valor,
+    fatura: linha.faturaSugerida,
+    responsavelPessoaId: opcoes.responsaveis?.[linha.descricao] ?? null,
+    parcelaNumero: linha.parcelaNumero,
+    parcelaTotal: linha.parcelaTotal,
   });
 
-  it('é idempotente: reimportar o mesmo arquivo não duplica nada', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
+  return app.inject({
+    method: 'POST',
+    url: `/cartoes/${cartaoId}/importacoes`,
+    headers: { cookie },
+    payload: {
+      nomeDoArquivo: 'fatura.csv',
+      mesSelecionado: opcoes.mesSelecionado,
+      lancamentos: previa.lancamentos.map(classificar),
+      novosParcelamentos: previa.novosParcelamentos.map(classificar),
+      pagamentos: previa.pagamentos.map((linha) => ({
+        chave: linha.chave,
+        data: linha.data,
+        descricao: linha.descricao,
+        valor: linha.valor,
+        fatura: linha.faturaSugerida,
+      })),
+      divergenciaAceita: opcoes.divergenciaAceita ?? true,
+    },
+  });
+}
 
-    const primeira = await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-    const segunda = await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
+describe('prévia da importação', () => {
+  it('lê o arquivo sem gravar nada', async () => {
+    const resposta = await analisar('nubank-agosto.csv');
 
-    expect(primeira.json().lancamentosInseridos).toBe(5);
-    // Este é o teste que mais importa: o README permite importar a mesma fatura várias
-    // vezes no mesmo mês, e proíbe duplicar lançamentos idênticos.
-    expect(segunda.json().lancamentosInseridos).toBe(0);
-    expect(segunda.json().lancamentosIgnorados).toBe(5);
-    expect(await app.prisma.invoiceEntry.count()).toBe(5);
-    expect(segunda.json().totalDaFatura).toBe('189.4');
+    expect(resposta.statusCode).toBe(200);
+    // A tela de classificação existe justamente para a pessoa decidir antes de gravar.
+    expect(await app.prisma.invoiceEntry.count()).toBe(0);
+    expect(await app.prisma.invoice.count()).toBe(0);
   });
 
-  it('não colapsa duas compras iguais no mesmo dia', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
+  it('separa lançamentos avulsos de parcelamentos', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
 
-    const cafes = await app.prisma.invoiceEntry.findMany({
-      where: { description: { contains: 'Cafe' } },
-    });
-
-    // Dois cafés de R$ 12 no mesmo dia são duas despesas reais. Uma dedupe ingênua
-    // descartaria a segunda e o usuário perderia uma despesa sem perceber.
-    expect(cafes).toHaveLength(2);
-  });
-
-  it('importa incrementalmente: só as linhas novas entram', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-    const atualizada = await importar(
-      app,
-      cookie,
-      cartaoId,
-      'nubank-agosto-atualizada.csv',
-      '2026-08',
+    expect(previa.lancamentos.map((l: LinhaDaPrevia) => l.descricao)).not.toContain(
+      'Farmacia Popular - 3/10',
     );
-
-    // O arquivo novo tem as 5 linhas anteriores (uma com espaçamento diferente) e 2 novas.
-    expect(atualizada.json().lancamentosInseridos).toBe(2);
-    expect(atualizada.json().lancamentosIgnorados).toBe(5);
-    expect(await app.prisma.invoiceEntry.count()).toBe(7);
+    expect(previa.novosParcelamentos).toHaveLength(1);
+    expect(previa.novosParcelamentos[0]).toMatchObject({ parcelaNumero: 3, parcelaTotal: 10 });
   });
 
-  it('gera uma obrigação por fatura, não uma por lançamento', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
+  it('lista os meses das parcelas que serão criadas', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
 
-    const obrigacoes = await app.prisma.obligation.findMany({ where: { originType: 'INVOICE' } });
-
-    // Ninguém paga cada compra, paga a fatura. Uma obrigação por lançamento duplicaria a
-    // dívida e faria o relatório listar linhas que não correspondem a pagamento nenhum.
-    expect(obrigacoes).toHaveLength(1);
-    expect(obrigacoes[0]!.amount.toString()).toBe('189.4');
-    expect(obrigacoes[0]!.creditorId).toBeNull();
-    expect(obrigacoes[0]!.dueDate.toISOString().slice(0, 10)).toBe('2026-08-05');
+    // Da parcela 3 até a 10 são oito parcelas, a atual mais sete.
+    expect(previa.novosParcelamentos[0].mesesDasParcelas).toHaveLength(8);
+    expect(previa.novosParcelamentos[0].mesesDasParcelas[0]).toBe('2026-08');
+    expect(previa.novosParcelamentos[0].mesesDasParcelas[7]).toBe('2027-03');
   });
 
-  it('recusa importar em cartão de outra pessoa', async () => {
-    const { cartaoId } = await prepararCartao(app);
+  it('sugere a fatura de cada compra pela data e pelo fechamento do cartão', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+
+    // O cartão fecha dia 25: tudo antes disso cai na fatura de agosto.
+    for (const linha of previa.lancamentos) {
+      expect(linha.faturaSugerida).toBe('2026-08');
+    }
+    expect(previa.faturaSugerida).toBe('2026-08');
+  });
+
+  it('recusa cartão de outra pessoa', async () => {
     await criarUsuario(app, { email: 'bruno@exemplo.com' });
     const bruno = await logar(app, 'bruno@exemplo.com');
 
-    const resposta = await importar(app, bruno, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    expect(resposta.statusCode).toBe(404);
-  });
-
-  it('recusa arquivo de formato desconhecido', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-
-    const resposta = await importar(app, cookie, cartaoId, 'formato-desconhecido.csv', '2026-08');
-
-    expect(resposta.statusCode).toBe(422);
-  });
-
-  it('registra a importação para auditoria, inclusive o que foi ignorado', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    const lista = await app.inject({
-      method: 'GET',
-      url: `/cartoes/${cartaoId}/importacoes`,
-      headers: { cookie },
-    });
-
-    expect(lista.json()).toHaveLength(2);
-    expect(lista.json()[0]).toMatchObject({ rowsInserted: 0, rowsSkipped: 5 });
+    expect((await analisar('nubank-agosto.csv', bruno)).statusCode).toBe(404);
   });
 });
 
-describe('pagamento vindo no CSV', () => {
-  it('registra o pagamento quando a fatura está em aberto', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
+describe('confirmação da importação', () => {
+  it('grava os lançamentos e cria a fatura', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    const resposta = await confirmar(previa, { mesSelecionado: '2026-08' });
 
-    const resposta = await importar(
-      app,
-      cookie,
-      cartaoId,
-      'brasileiro-com-pagamento.csv',
-      '2026-08',
-    );
-
-    expect(resposta.json().pagamentosRegistrados).toBe(1);
-    expect(resposta.json().pagamentosIgnorados).toBe(0);
-    expect(await app.prisma.invoicePayment.count()).toBe(1);
-  });
-
-  it('ignora em silêncio quando a fatura não está aberta, mas deixa registro', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-
-    // Primeira importação sem o pagamento, para a fatura existir e poder ser fechada.
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-    const fatura = await app.prisma.invoice.findFirstOrThrow();
-    await app.inject({ method: 'POST', url: `/faturas/${fatura.id}/fechar`, headers: { cookie } });
-
-    const resposta = await importar(
-      app,
-      cookie,
-      cartaoId,
-      'brasileiro-com-pagamento.csv',
-      '2026-08',
-    );
-
-    // O README manda ignorar em silêncio — silêncio para o usuário, não amnésia para o
-    // sistema: sem o contador, "sumiu um pagamento" vira investigação sem pista.
     expect(resposta.statusCode).toBe(201);
-    expect(resposta.json().pagamentosRegistrados).toBe(0);
-    expect(resposta.json().pagamentosIgnorados).toBe(1);
-    expect(await app.prisma.invoicePayment.count()).toBe(0);
+    expect(resposta.json().lancamentosInseridos).toBeGreaterThan(0);
+
+    const fatura = await app.prisma.invoice.findFirstOrThrow({
+      where: { referenceMonth: '2026-08' },
+    });
+    // A data de fechamento vem do dia configurado no cartão.
+    expect(fatura.closingDate.toISOString().slice(0, 10)).toBe('2026-08-25');
+    expect(fatura.dueDate.toISOString().slice(0, 10)).toBe('2026-08-05');
   });
 
-  it('não duplica o pagamento na reimportação e liquida a obrigação', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
+  it('gera as parcelas futuras nas faturas seguintes', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
 
-    await importar(app, cookie, cartaoId, 'brasileiro-com-pagamento.csv', '2026-08');
-    const segunda = await importar(
-      app,
-      cookie,
-      cartaoId,
-      'brasileiro-com-pagamento.csv',
+    const parcelas = await app.prisma.invoiceEntry.findMany({
+      where: { installmentId: { not: null } },
+      include: { invoice: true },
+      orderBy: { installmentNumber: 'asc' },
+    });
+
+    // O compromisso inteiro aparece nos próximos meses em vez de surgir como surpresa a
+    // cada fatura.
+    expect(parcelas).toHaveLength(8);
+    expect(parcelas[0]!.projected).toBe(false);
+    expect(parcelas[1]!.projected).toBe(true);
+    expect(parcelas.map((p) => p.invoice.referenceMonth.trim())).toEqual([
       '2026-08',
-    );
+      '2026-09',
+      '2026-10',
+      '2026-11',
+      '2026-12',
+      '2027-01',
+      '2027-02',
+      '2027-03',
+    ]);
+  });
 
-    expect(segunda.json().pagamentosRegistrados).toBe(0);
-    expect(await app.prisma.invoicePayment.count()).toBe(1);
+  it('alerta antes de gravar quando a fatura diverge do mês escolhido', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
 
-    const obrigacao = await app.prisma.obligation.findFirstOrThrow({
-      where: { originType: 'INVOICE' },
+    const recusada = await confirmar(previa, {
+      mesSelecionado: '2026-07',
+      divergenciaAceita: false,
     });
 
-    // Total 1120,50 + 89,90 - 75,30 = 1135,10; pago 500,00 → parcialmente liquidada.
-    expect(obrigacao.amount.toString()).toBe('1135.1');
-    expect(obrigacao.settledAmount.toString()).toBe('500');
-    expect(obrigacao.status).toBe('PARTIAL');
+    // O alerta é o ponto: escolher agosto e o arquivo ser de julho é o erro comum, e ele
+    // só apareceria quando o total da fatura não batesse.
+    expect(recusada.statusCode).toBe(422);
+    expect(recusada.json().mensagem).toContain('2026-08');
+    expect(await app.prisma.invoiceEntry.count()).toBe(0);
+
+    const aceita = await confirmar(previa, { mesSelecionado: '2026-07', divergenciaAceita: true });
+    expect(aceita.statusCode).toBe(201);
   });
-});
 
-describe('repasse de lançamento a terceiro', () => {
-  it('cria o a receber sem tirar a dívida da fatura', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    const pessoa = await app.inject({
+  it('classifica o responsável e gera o a receber', async () => {
+    const bruno = await app.inject({
       method: 'POST',
       url: '/pessoas',
       headers: { cookie },
       payload: { nome: 'Bruno' },
     });
 
-    const lancamento = await app.prisma.invoiceEntry.findFirstOrThrow({
-      where: { description: { contains: 'Mercado' } },
-    });
+    const previa = (await analisar('nubank-agosto.csv')).json();
 
-    const resposta = await app.inject({
-      method: 'PATCH',
-      url: `/lancamentos/${lancamento.id}/repasse`,
-      headers: { cookie },
-      payload: { pessoaId: pessoa.json().id },
+    await confirmar(previa, {
+      mesSelecionado: '2026-08',
+      responsaveis: { 'Mercado Sao Joao': bruno.json().id },
     });
-
-    expect(resposta.statusCode).toBe(200);
 
     const aReceber = await app.prisma.obligation.findFirstOrThrow({
       where: { originType: 'CARD_ENTRY' },
     });
-    const fatura = await app.prisma.obligation.findFirstOrThrow({
-      where: { originType: 'INVOICE' },
-    });
 
-    // As duas coexistem e não se anulam: o dono continua devendo à fatura, e o terceiro
-    // passa a dever ao dono. Anular uma com a outra faria a fatura parecer menor do que é.
+    expect(aReceber.debtorId).toBe(bruno.json().id);
     expect(aReceber.amount.toString()).toBe('120.5');
-    expect(aReceber.debtorId).toBe(pessoa.json().id);
-    expect(fatura.amount.toString()).toBe('189.4');
   });
 
-  it('cancela o a receber ao desfazer o repasse', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    const pessoa = await app.inject({
-      method: 'POST',
-      url: '/pessoas',
-      headers: { cookie },
-      payload: { nome: 'Bruno' },
-    });
-    const lancamento = await app.prisma.invoiceEntry.findFirstOrThrow({
-      where: { description: { contains: 'Mercado' } },
-    });
-
-    const repassar = (pessoaId: string | null) =>
-      app.inject({
-        method: 'PATCH',
-        url: `/lancamentos/${lancamento.id}/repasse`,
-        headers: { cookie },
-        payload: { pessoaId },
-      });
-
-    await repassar(pessoa.json().id);
-    await repassar(null);
-
-    const aReceber = await app.prisma.obligation.findFirstOrThrow({
-      where: { originType: 'CARD_ENTRY' },
-    });
-
-    // Cancelada, não apagada: se já houvesse pagamento parcial, apagar sumiria com o
-    // registro de um dinheiro que trocou de mãos.
-    expect(aReceber.status).toBe('CANCELLED');
-  });
-
-  it('recusa repassar um estorno', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
-    const pessoa = await app.inject({
-      method: 'POST',
-      url: '/pessoas',
-      headers: { cookie },
-      payload: { nome: 'Bruno' },
-    });
-    const estorno = await app.prisma.invoiceEntry.findFirstOrThrow({
-      where: { description: { contains: 'Estorno' } },
-    });
-
-    // Estorno é crédito, não gasto: repassar criaria uma cobrança invertida, em que o
-    // terceiro passaria a ter a receber por uma compra que não fez.
-    const resposta = await app.inject({
-      method: 'PATCH',
-      url: `/lancamentos/${estorno.id}/repasse`,
-      headers: { cookie },
-      payload: { pessoaId: pessoa.json().id },
-    });
-
-    expect(resposta.statusCode).toBe(422);
-  });
-
-  it('recusa repassar para pessoa de outra agenda', async () => {
-    const { cookie, cartaoId } = await prepararCartao(app);
-    await importar(app, cookie, cartaoId, 'nubank-agosto.csv', '2026-08');
-
+  it('recusa responsável que não é do cadastro', async () => {
     await criarUsuario(app, { email: 'bruno@exemplo.com' });
     const bruno = await logar(app, 'bruno@exemplo.com');
     const pessoaDoBruno = await app.inject({
@@ -350,15 +253,179 @@ describe('repasse de lançamento a terceiro', () => {
       payload: { nome: 'Carla' },
     });
 
-    const lancamento = await app.prisma.invoiceEntry.findFirstOrThrow();
+    const previa = (await analisar('nubank-agosto.csv')).json();
+
+    const resposta = await confirmar(previa, {
+      mesSelecionado: '2026-08',
+      responsaveis: { 'Mercado Sao Joao': pessoaDoBruno.json().id },
+    });
+
+    expect(resposta.statusCode).toBe(422);
+  });
+
+  it('continua idempotente: reimportar o mesmo arquivo não duplica', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+    const total = await app.prisma.invoiceEntry.count();
+
+    const segunda = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(segunda, { mesSelecionado: '2026-08' });
+
+    expect(await app.prisma.invoiceEntry.count()).toBe(total);
+  });
+});
+
+describe('parcelamento já conhecido', () => {
+  it('reconhece no mês seguinte e não lança de novo', async () => {
+    const agosto = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(agosto, { mesSelecionado: '2026-08' });
+
+    const setembro = (await analisar('nubank-setembro.csv')).json();
+
+    // A parcela 4/10 já foi projetada em agosto: aparece como "parcelamento anterior"
+    // para a pessoa entender por que não está sendo lançada.
+    expect(setembro.parcelamentosAnteriores).toHaveLength(1);
+    expect(setembro.parcelamentosAnteriores[0]).toMatchObject({
+      parcelaNumero: 4,
+      parcelaTotal: 10,
+      faturaDaParcela: '2026-09',
+    });
+
+    // A compra nova de setembro é um parcelamento novo.
+    expect(setembro.novosParcelamentos).toHaveLength(1);
+    expect(setembro.novosParcelamentos[0].descricao).toContain('Livraria');
+  });
+
+  it('não duplica a parcela ao confirmar o mês seguinte', async () => {
+    const agosto = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(agosto, { mesSelecionado: '2026-08' });
+
+    const antes = await app.prisma.invoiceEntry.count({
+      where: { description: { contains: 'Farmacia' } },
+    });
+
+    const setembro = (await analisar('nubank-setembro.csv')).json();
+    await confirmar(setembro, { mesSelecionado: '2026-09' });
+
+    expect(
+      await app.prisma.invoiceEntry.count({ where: { description: { contains: 'Farmacia' } } }),
+    ).toBe(antes);
+  });
+});
+
+describe('tela de parcelamentos', () => {
+  it('traz o cartão, o mês de cada parcela e o quanto falta', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    const lista = await app.inject({
+      method: 'GET',
+      url: '/parcelamentos',
+      headers: { cookie },
+    });
+
+    const parcelamento = lista.json()[0];
+
+    expect(parcelamento.cartao).toBe('Nubank');
+    expect(parcelamento.quantidadeDeParcelas).toBe(10);
+    expect(parcelamento.parcelas).toHaveLength(8);
+    expect(parcelamento.parcelas[0].fatura).toBe('2026-08');
+    // Só a parcela que veio do extrato conta como paga; as projetadas ainda não aconteceram.
+    expect(parcelamento.parcelasPagas).toBe(1);
+    expect(parcelamento.restante).toBe('809.10');
+  });
+
+  it('troca o responsável de todas as parcelas de uma vez', async () => {
+    const bruno = await app.inject({
+      method: 'POST',
+      url: '/pessoas',
+      headers: { cookie },
+      payload: { nome: 'Bruno' },
+    });
+
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    const lista = await app.inject({ method: 'GET', url: '/parcelamentos', headers: { cookie } });
+    const id = lista.json()[0].id;
 
     const resposta = await app.inject({
       method: 'PATCH',
-      url: `/lancamentos/${lancamento.id}/repasse`,
+      url: `/parcelamentos/${id}`,
       headers: { cookie },
-      payload: { pessoaId: pessoaDoBruno.json().id },
+      payload: { responsavelPessoaId: bruno.json().id },
     });
 
-    expect(resposta.statusCode).toBe(404);
+    expect(resposta.statusCode).toBe(200);
+
+    // Se a compra era do Bruno, todas as doze são dele — inclusive as que ainda não venceram.
+    const parcelas = await app.prisma.invoiceEntry.findMany({
+      where: { installmentId: id },
+    });
+    expect(parcelas.every((p) => p.forwardedToPersonId === bruno.json().id)).toBe(true);
+
+    expect(await app.prisma.obligation.count({ where: { originType: 'CARD_ENTRY' } })).toBe(8);
+  });
+
+  it('excluir remove só as parcelas que ainda não vieram de extrato', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    const lista = await app.inject({ method: 'GET', url: '/parcelamentos', headers: { cookie } });
+    const id = lista.json()[0].id;
+
+    const resposta = await app.inject({
+      method: 'DELETE',
+      url: `/parcelamentos/${id}`,
+      headers: { cookie },
+    });
+
+    expect(resposta.json().parcelasRemovidas).toBe(7);
+    // A parcela de agosto veio do banco: é fato consumado e apagá-la mudaria o total
+    // daquela fatura.
+    expect(
+      await app.prisma.invoiceEntry.count({ where: { description: { contains: 'Farmacia' } } }),
+    ).toBe(1);
+  });
+
+  it('não enxerga parcelamento de outra pessoa', async () => {
+    const previa = (await analisar('nubank-agosto.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    await criarUsuario(app, { email: 'bruno@exemplo.com' });
+    const bruno = await logar(app, 'bruno@exemplo.com');
+
+    const lista = await app.inject({
+      method: 'GET',
+      url: '/parcelamentos',
+      headers: { cookie: bruno },
+    });
+
+    expect(lista.json()).toHaveLength(0);
+  });
+});
+
+describe('pagamento da fatura', () => {
+  it('registra o pagamento na fatura em aberto', async () => {
+    const previa = (await analisar('brasileiro-com-pagamento.csv')).json();
+    const resposta = await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    expect(resposta.json().pagamentosRegistrados).toBe(1);
+
+    const pagamento = await app.prisma.payment.findFirstOrThrow();
+    expect(pagamento.amount.toString()).toBe('500');
+    expect(pagamento.paidAt.toISOString().slice(0, 10)).toBe('2026-08-10');
+  });
+
+  it('não duplica o pagamento ao reimportar', async () => {
+    const previa = (await analisar('brasileiro-com-pagamento.csv')).json();
+    await confirmar(previa, { mesSelecionado: '2026-08' });
+
+    const segunda = (await analisar('brasileiro-com-pagamento.csv')).json();
+    const resposta = await confirmar(segunda, { mesSelecionado: '2026-08' });
+
+    expect(resposta.json().pagamentosIgnorados).toBe(1);
+    expect(await app.prisma.payment.count()).toBe(1);
   });
 });

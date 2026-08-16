@@ -6,7 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 As 9 fases do plano estão concluídas: fundação, schema, auth/LGPD, convites, cartão com importação de CSV, rateio de grupo, relatórios, frontend e landing/SEO. O plano está em `C:\Users\humbe\.claude\plans\crie-um-plano-de-reflective-newt.md`.
 
-Documentação em `Docs/` — comece pelo [índice](Docs/README.md). Toda documentação e mensagem de commit em português.
+Documentação em duas pastas, ambas em português, como toda mensagem de commit:
+
+- `Docs/` — técnica, para quem desenvolve. Comece pelo [índice](Docs/README.md).
+- `Manual/` — de uso, para quem usa o sistema. Comece pelo [índice](Manual/README.md). **Ao mudar comportamento de uma tela, atualize o capítulo correspondente** — um manual que descreve o que o sistema já não faz é pior que manual nenhum.
 
 **Antes de publicar**, há pendências listadas em `Docs/seo.md` e `Docs/lgpd.md` (domínio real, revisão jurídica dos documentos legais, contato do encarregado, política de backup).
 

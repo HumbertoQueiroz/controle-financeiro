@@ -48,7 +48,7 @@ export function ListaDeDados<T>({
           <li key={chaveDoItem(item)}>
             <Envoltorio
               aoClicar={aoClicarNoItem ? () => aoClicarNoItem(item) : undefined}
-              className="flex w-full flex-col gap-2 rounded-[--radius-padrao] border border-borda bg-superficie p-4 text-left"
+              className="flex w-full flex-col gap-2 rounded-padrao border border-borda bg-superficie p-4 text-left"
             >
               <div className="font-medium text-texto">{principal?.render(item)}</div>
 
@@ -93,7 +93,7 @@ export function ListaDeDados<T>({
                 onClick={aoClicarNoItem ? () => aoClicarNoItem(item) : undefined}
                 className={cn(
                   'border-b border-borda last:border-0',
-                  aoClicarNoItem && 'cursor-pointer hover:bg-superficie-2',
+                  aoClicarNoItem && 'cursor-pointer transition-colors hover:bg-superficie-2',
                 )}
               >
                 {colunas.map((coluna) => (
@@ -126,7 +126,11 @@ function Envoltorio({
   // anunciado como acionável pelo leitor de tela.
   if (aoClicar) {
     return (
-      <button type="button" onClick={aoClicar} className={cn(className, 'hover:bg-superficie-2')}>
+      <button
+        type="button"
+        onClick={aoClicar}
+        className={cn(className, 'transition-colors hover:bg-superficie-2')}
+      >
         {children}
       </button>
     );

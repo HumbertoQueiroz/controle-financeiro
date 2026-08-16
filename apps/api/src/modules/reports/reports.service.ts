@@ -11,6 +11,7 @@ const CAMPOS = {
   status: true,
   paymentMethod: true,
   originType: true,
+  counterpartyLabel: true,
   debtor: { select: { name: true } },
   creditor: { select: { name: true } },
 } as const;
@@ -31,9 +32,12 @@ function paraItem(obrigacao: ObrigacaoDoBanco, lado: 'PAGAR' | 'RECEBER') {
     status: obrigacao.status,
     formaDePagamento: obrigacao.paymentMethod,
     origem: obrigacao.originType,
-    // A contraparte é a outra ponta da mesma linha. Nulo em "a pagar" significa que a
-    // dívida é com a instituição do cartão, não com uma pessoa.
-    contraparte: lado === 'PAGAR' ? (obrigacao.creditor?.name ?? null) : obrigacao.debtor.name,
+    // A contraparte é a outra ponta da mesma linha. O rótulo livre vem primeiro porque é
+    // o que existe quando a contraparte não é pessoa cadastrada — o salário, o aluguel.
+    // Nulo em "a pagar" significa dívida com a instituição do cartão.
+    contraparte:
+      obrigacao.counterpartyLabel ??
+      (lado === 'PAGAR' ? (obrigacao.creditor?.name ?? null) : (obrigacao.debtor?.name ?? null)),
   };
 }
 
@@ -128,27 +132,5 @@ export async function gerarRelatorio(
       aPagar && aReceber
         ? deCentavos(paraCentavos(aReceber.total) - paraCentavos(aPagar.total))
         : null,
-  };
-}
-
-/** Números do painel inicial de quem está logado. */
-export async function gerarResumo(prisma: PrismaClient, userId: string) {
-  const relatorio = await gerarRelatorio(prisma, userId, 'BOTH', {
-    escopo: 'BOTH',
-    situacao: 'ABERTAS',
-  });
-
-  const faturasEmAberto = await prisma.invoice.count({
-    where: { card: { ownerUserId: userId }, status: 'OPEN' },
-  });
-
-  const proxima = relatorio.aPagar?.itens[0]?.vencimento ?? null;
-
-  return {
-    aPagar: relatorio.aPagar?.total ?? '0.00',
-    aReceber: relatorio.aReceber?.total ?? '0.00',
-    saldo: relatorio.saldo ?? '0.00',
-    faturasEmAberto,
-    proximoVencimento: proxima,
   };
 }

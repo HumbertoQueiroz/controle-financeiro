@@ -1,11 +1,15 @@
 import {
+  ArrowDown,
+  ArrowUp,
   ChartPieSlice,
   CreditCard,
+  DotsThree,
   House,
   Moon,
   ShareNetwork,
   SignOut,
   Sun,
+  UserCircle,
   UsersThree,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
@@ -21,12 +25,26 @@ interface ItemDeNavegacao {
   fim?: boolean;
 }
 
-/** Cinco itens é o teto do que cabe numa barra inferior sem apertar o alvo de toque. */
+/**
+ * Cinco itens é o teto do que cabe numa barra inferior sem apertar o alvo de toque.
+ *
+ * A receber e a pagar ficam aqui porque são o uso diário; cartões, grupos e o resto vivem
+ * no menu, que só aparece no celular quando alguém procura.
+ */
 const ITENS: ItemDeNavegacao[] = [
-  { para: '/app', rotulo: 'Início', Icone: House, fim: true },
+  { para: '/app', rotulo: 'Orçamento', Icone: House, fim: true },
+  { para: '/app/a-receber', rotulo: 'A receber', Icone: ArrowUp },
+  { para: '/app/a-pagar', rotulo: 'A pagar', Icone: ArrowDown },
   { para: '/app/cartoes', rotulo: 'Cartões', Icone: CreditCard },
+  { para: '/app/mais', rotulo: 'Mais', Icone: DotsThree },
+];
+
+/** O que não coube na barra inferior, e a barra lateral mostra por inteiro. */
+const ITENS_SECUNDARIOS: ItemDeNavegacao[] = [
+  { para: '/app/parcelamentos', rotulo: 'Parcelamentos', Icone: CreditCard },
   { para: '/app/grupos', rotulo: 'Grupos', Icone: UsersThree },
   { para: '/app/relatorios', rotulo: 'Relatórios', Icone: ChartPieSlice },
+  { para: '/app/pessoas', rotulo: 'Pessoas', Icone: UsersThree },
   { para: '/app/compartilhar', rotulo: 'Compartilhar', Icone: ShareNetwork },
 ];
 
@@ -53,7 +71,11 @@ export function AppShell() {
       <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-borda bg-superficie p-4 lg:flex">
         <p className="px-3 pb-4 text-sm font-semibold text-texto">Controle Financeiro</p>
 
-        {ITENS.map((item) => (
+        {ITENS.filter((item) => item.para !== '/app/mais').map((item) => (
+          <ItemLateral key={item.para} item={item} />
+        ))}
+
+        {ITENS_SECUNDARIOS.map((item) => (
           <ItemLateral key={item.para} item={item} />
         ))}
 
@@ -63,12 +85,12 @@ export function AppShell() {
               item={{ para: '/app/admin/usuarios', rotulo: 'Usuários', Icone: UsersThree }}
             />
           )}
-          <ItemLateral item={{ para: '/app/conta', rotulo: 'Minha conta', Icone: House }} />
+          <ItemLateral item={{ para: '/app/conta', rotulo: 'Minha conta', Icone: UserCircle }} />
 
           <button
             type="button"
             onClick={aoSair}
-            className="flex min-h-11 items-center gap-3 rounded-[--radius-padrao] px-3 text-sm text-texto-suave hover:bg-superficie-2"
+            className="flex min-h-11 items-center gap-3 rounded-padrao px-3 text-sm text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto"
           >
             <SignOut size={20} aria-hidden />
             Sair
@@ -86,7 +108,7 @@ export function AppShell() {
               type="button"
               onClick={aoSair}
               aria-label="Sair"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto"
             >
               <SignOut size={20} aria-hidden />
             </button>
@@ -113,8 +135,12 @@ export function AppShell() {
             className={({ isActive }) =>
               cn(
                 // min-h-14 mantém o alvo de toque acima de 44px com folga
-                'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[11px]',
-                isActive ? 'text-destaque' : 'text-texto-suave',
+                'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[11px] transition-colors',
+                // O item ativo também reage: sem isso ele é o único da barra que parece
+                // desligado quando o ponteiro passa por cima.
+                isActive
+                  ? 'text-destaque hover:bg-destaque-suave'
+                  : 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
               )
             }
           >
@@ -138,10 +164,10 @@ function ItemLateral({ item }: { item: ItemDeNavegacao }) {
       end={item.fim}
       className={({ isActive }) =>
         cn(
-          'flex min-h-11 items-center gap-3 rounded-[--radius-padrao] px-3 text-sm',
+          'flex min-h-11 items-center gap-3 rounded-padrao px-3 text-sm transition-colors',
           isActive
-            ? 'bg-destaque-suave font-medium text-destaque'
-            : 'text-texto-suave hover:bg-superficie-2',
+            ? 'bg-destaque-suave font-medium text-destaque hover:opacity-90'
+            : 'text-texto-suave hover:bg-superficie-2 hover:text-texto',
         )
       }
     >
@@ -157,7 +183,7 @@ function BotaoDeTema({ tema, alternar }: { tema: string; alternar: () => void })
       type="button"
       onClick={alternar}
       aria-label={tema === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro'}
-      className="flex h-11 w-11 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2"
+      className="flex h-11 w-11 items-center justify-center rounded-full text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto"
     >
       {tema === 'escuro' ? <Sun size={20} aria-hidden /> : <Moon size={20} aria-hidden />}
     </button>

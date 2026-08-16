@@ -2,11 +2,14 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   atualizarCartaoSchema,
+  atualizarParcelamentoSchema,
   cartaoSchema,
+  confirmarImportacaoSchema,
   criarCartaoSchema,
   faturaSchema,
-  lancamentoSchema,
-  mesDeReferenciaSchema,
+  lancamentoDaFaturaSchema,
+  parcelamentoSchema,
+  previaDaImportacaoSchema,
   repassarLancamentoSchema,
   resultadoDaImportacaoSchema,
 } from '@controle/shared';
@@ -14,6 +17,7 @@ import { z } from 'zod';
 import { ErroDeRegra } from '../../lib/erros.js';
 import * as service from './cards.service.js';
 import * as importacao from '../imports/imports.service.js';
+import * as parcelamentos from '../imports/parcelamentos.service.js';
 
 const paramsId = z.object({ id: z.string().uuid() });
 const ok = z.object({ ok: z.boolean() });
@@ -52,7 +56,7 @@ export async function cardsRoutes(app: FastifyInstance) {
 
   rotas.get(
     '/faturas/:id/lancamentos',
-    { schema: { params: paramsId, response: { 200: z.array(lancamentoSchema) } } },
+    { schema: { params: paramsId, response: { 200: z.array(lancamentoDaFaturaSchema) } } },
     async (request) =>
       service.listarLancamentos(app.prisma, request.params.id, request.usuario!.id),
   );
@@ -76,30 +80,19 @@ export async function cardsRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Upload da fatura. `multipart` em vez de JSON com o CSV embutido: o arquivo vem do
-   * disco do usuário e pode ter alguns megabytes, e base64 dentro de JSON o inflaria em
-   * um terço sem nenhum ganho.
+   * Primeira fase: lê o arquivo e devolve o que encontrou, sem gravar.
+   *
+   * `multipart` em vez de JSON com o CSV embutido: o arquivo vem do disco do usuário e
+   * pode ter alguns megabytes, e base64 dentro de JSON o inflaria em um terço sem ganho.
    */
   rotas.post(
-    '/cartoes/:id/importacoes',
-    { schema: { params: paramsId, response: { 201: resultadoDaImportacaoSchema } } },
-    async (request, reply) => {
+    '/cartoes/:id/importacoes/previa',
+    { schema: { params: paramsId, response: { 200: previaDaImportacaoSchema } } },
+    async (request) => {
       const arquivo = await request.file({ limits: { fileSize: TAMANHO_MAXIMO_DO_ARQUIVO } });
 
       if (!arquivo) {
         throw new ErroDeRegra('Envie o arquivo CSV da fatura');
-      }
-
-      // O campo de texto vem junto do arquivo no multipart, e pode chegar como lista
-      // quando enviado mais de uma vez.
-      const campo = arquivo.fields.mesDeReferencia;
-      const informado = Array.isArray(campo) ? campo[0] : campo;
-      const mes = mesDeReferenciaSchema.safeParse(
-        informado && 'value' in informado ? informado.value : undefined,
-      );
-
-      if (!mes.success) {
-        throw new ErroDeRegra('Informe o mês de referência da fatura no formato AAAA-MM');
       }
 
       const conteudo = await arquivo.toBuffer();
@@ -108,22 +101,71 @@ export async function cardsRoutes(app: FastifyInstance) {
         throw new ErroDeRegra('O arquivo excede o tamanho máximo de 5 MB');
       }
 
-      return reply.status(201).send(
-        await importacao.importarFatura(
-          app.prisma,
-          request.usuario!.id,
-          request.params.id,
-          mes.data,
-          {
-            nome: arquivo.filename,
-            conteudo,
-          },
-        ),
-      );
+      return importacao.analisarArquivo(app.prisma, request.usuario!.id, request.params.id, {
+        nome: arquivo.filename,
+        conteudo,
+      });
     },
+  );
+
+  /** Segunda fase: grava o que a pessoa classificou. */
+  rotas.post(
+    '/cartoes/:id/importacoes',
+    {
+      schema: {
+        params: paramsId,
+        body: confirmarImportacaoSchema,
+        response: { 201: resultadoDaImportacaoSchema },
+      },
+    },
+    async (request, reply) =>
+      reply
+        .status(201)
+        .send(
+          await importacao.confirmarImportacao(
+            app.prisma,
+            request.usuario!.id,
+            request.params.id,
+            request.body,
+          ),
+        ),
   );
 
   rotas.get('/cartoes/:id/importacoes', { schema: { params: paramsId } }, async (request) =>
     importacao.listarImportacoes(app.prisma, request.params.id, request.usuario!.id),
+  );
+
+  // ------------------------------------------------------------------
+  // Parcelamentos
+  // ------------------------------------------------------------------
+  rotas.get(
+    '/parcelamentos',
+    { schema: { response: { 200: z.array(parcelamentoSchema) } } },
+    async (request) => parcelamentos.listar(app.prisma, request.usuario!.id),
+  );
+
+  rotas.patch(
+    '/parcelamentos/:id',
+    {
+      schema: { params: paramsId, body: atualizarParcelamentoSchema, response: { 200: ok } },
+    },
+    async (request) =>
+      parcelamentos.trocarResponsavel(
+        app.prisma,
+        request.params.id,
+        request.usuario!.id,
+        request.body.responsavelPessoaId,
+      ),
+  );
+
+  rotas.delete(
+    '/parcelamentos/:id',
+    {
+      schema: {
+        params: paramsId,
+        response: { 200: z.object({ ok: z.boolean(), parcelasRemovidas: z.number() }) },
+      },
+    },
+    async (request) => parcelamentos.excluir(app.prisma, request.params.id, request.usuario!.id),
   );
 }

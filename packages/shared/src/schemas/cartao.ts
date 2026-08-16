@@ -33,6 +33,8 @@ export const criarCartaoSchema = z.object({
     .optional(),
   diaDeFechamento: diaDoMes,
   diaDeVencimento: diaDoMes,
+  /** Cartão usado por mais de uma pessoa. */
+  compartilhado: z.boolean().default(false),
 });
 
 export const atualizarCartaoSchema = criarCartaoSchema
@@ -48,6 +50,7 @@ export const cartaoSchema = z.object({
   diaDeFechamento: z.number(),
   diaDeVencimento: z.number(),
   ativo: z.boolean(),
+  compartilhado: z.boolean(),
 });
 
 export const statusDaFaturaSchema = z.enum(['OPEN', 'CLOSED', 'PAID']);
@@ -56,13 +59,15 @@ export const faturaSchema = z.object({
   id: z.string().uuid(),
   cartaoId: z.string().uuid(),
   mesDeReferencia: z.string(),
+  /** Depois desta data a compra vai para a fatura seguinte. */
+  fechamento: z.date(),
   vencimento: z.date(),
   status: statusDaFaturaSchema,
   total: z.string(),
   totalPago: z.string(),
 });
 
-export const lancamentoSchema = z.object({
+export const lancamentoDaFaturaSchema = z.object({
   id: z.string().uuid(),
   data: z.date(),
   descricao: z.string(),
@@ -78,24 +83,9 @@ export const repassarLancamentoSchema = z.object({
   pessoaId: z.string().uuid().nullable(),
 });
 
-/** O que a tela mostra depois de importar — inclusive o que foi ignorado. */
-export const resultadoDaImportacaoSchema = z.object({
-  importacaoId: z.string().uuid(),
-  faturaId: z.string().uuid(),
-  layout: z.string(),
-  linhasNoArquivo: z.number(),
-  lancamentosInseridos: z.number(),
-  lancamentosIgnorados: z.number(),
-  pagamentosRegistrados: z.number(),
-  pagamentosIgnorados: z.number(),
-  linhasNaoReconhecidas: z.number(),
-  totalDaFatura: z.string(),
-});
-
 export type FormaDePagamento = z.infer<typeof formaDePagamentoSchema>;
 export type CriarCartao = z.infer<typeof criarCartaoSchema>;
 export type AtualizarCartao = z.infer<typeof atualizarCartaoSchema>;
 export type Cartao = z.infer<typeof cartaoSchema>;
 export type Fatura = z.infer<typeof faturaSchema>;
-export type Lancamento = z.infer<typeof lancamentoSchema>;
-export type ResultadoDaImportacao = z.infer<typeof resultadoDaImportacaoSchema>;
+export type LancamentoDaFatura = z.infer<typeof lancamentoDaFaturaSchema>;

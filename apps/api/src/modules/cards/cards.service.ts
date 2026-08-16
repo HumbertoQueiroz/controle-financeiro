@@ -11,6 +11,7 @@ interface CartaoDoBanco {
   closingDay: number;
   dueDay: number;
   active: boolean;
+  shared: boolean;
 }
 
 function paraSaida(cartao: CartaoDoBanco) {
@@ -22,6 +23,7 @@ function paraSaida(cartao: CartaoDoBanco) {
     diaDeFechamento: cartao.closingDay,
     diaDeVencimento: cartao.dueDay,
     ativo: cartao.active,
+    compartilhado: cartao.shared,
   };
 }
 
@@ -43,6 +45,7 @@ export async function criar(prisma: PrismaClient, donoId: string, dados: CriarCa
       lastFour: dados.finalDoCartao ?? null,
       closingDay: dados.diaDeFechamento,
       dueDay: dados.diaDeVencimento,
+      shared: dados.compartilhado,
     },
   });
 
@@ -66,6 +69,7 @@ export async function atualizar(
       ...(dados.diaDeFechamento !== undefined && { closingDay: dados.diaDeFechamento }),
       ...(dados.diaDeVencimento !== undefined && { dueDay: dados.diaDeVencimento }),
       ...(dados.ativo !== undefined && { active: dados.ativo }),
+      ...(dados.compartilhado !== undefined && { shared: dados.compartilhado }),
     },
   });
 
@@ -82,23 +86,33 @@ export async function listarFaturas(prisma: PrismaClient, cartaoId: string, dono
       id: true,
       cardId: true,
       referenceMonth: true,
+      closingDate: true,
       dueDate: true,
       status: true,
       total: true,
-      payments: { select: { amount: true } },
     },
   });
+
+  // Quanto já foi pago vem da obrigação da fatura, que é onde os pagamentos vivem desde
+  // que passaram a ser um conceito único no sistema.
+  const obrigacoes = await prisma.obligation.findMany({
+    where: { originType: 'INVOICE', originId: { in: faturas.map((fatura) => fatura.id) } },
+    select: { originId: true, settledAmount: true },
+  });
+
+  const pagoPorFatura = new Map(
+    obrigacoes.map((obrigacao) => [obrigacao.originId, obrigacao.settledAmount.toString()]),
+  );
 
   return faturas.map((fatura) => ({
     id: fatura.id,
     cartaoId: fatura.cardId,
     mesDeReferencia: fatura.referenceMonth,
+    fechamento: fatura.closingDate,
     vencimento: fatura.dueDate,
     status: fatura.status,
     total: fatura.total.toString(),
-    totalPago: fatura.payments
-      .reduce((soma, pagamento) => soma.plus(pagamento.amount), fatura.total.mul(0))
-      .toString(),
+    totalPago: pagoPorFatura.get(fatura.id) ?? '0',
   }));
 }
 

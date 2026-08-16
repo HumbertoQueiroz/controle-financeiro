@@ -5,6 +5,7 @@ import {
   ROTULO_DO_ESCOPO,
   type Compartilhamento,
   type Escopo,
+  type Pessoa,
   type ResultadoDoCompartilhamento,
 } from '@controle/shared';
 import { api } from '@/lib/api';
@@ -26,6 +27,13 @@ export function Compartilhar() {
     queryKey: ['compartilhamentos'],
     queryFn: () => api.get<Compartilhamento[]>('/compartilhamentos'),
   });
+
+  const pessoas = useQuery({ queryKey: ['pessoas'], queryFn: () => api.get<Pessoa[]>('/pessoas') });
+
+  // Só quem ainda não tem conta pode ser vinculado por um convite: quem já tem recebe o
+  // acesso direto, e o vínculo daquela ficha é assunto separado.
+  const pessoasSemConta =
+    pessoas.data?.filter((pessoa) => pessoa.editavel && !pessoa.usuarioId) ?? [];
 
   const compartilhar = useMutation({
     mutationFn: (dados: { email: string; escopo: Escopo; telefone?: string }) =>
@@ -56,11 +64,15 @@ export function Compartilhar() {
 
     const dados = new FormData(evento.currentTarget);
     const telefone = String(dados.get('telefone') ?? '').trim();
+    const pessoaId = String(dados.get('pessoaId') ?? '').trim();
 
     compartilhar.mutate({
       email: String(dados.get('email')),
       escopo: String(dados.get('escopo')) as Escopo,
       ...(telefone ? { telefone } : {}),
+      // O vínculo com a ficha é o que faz o convidado enxergar as dívidas já lançadas em
+      // nome dele. Sem ele, o convidado entra e vê uma tela vazia.
+      ...(pessoaId ? { pessoaId } : {}),
     });
 
     evento.currentTarget.reset();
@@ -106,6 +118,22 @@ export function Compartilhar() {
                 inputMode="tel"
                 placeholder="(11) 90000-0000"
               />
+            )}
+          </Campo>
+
+          <Campo
+            rotulo="É alguém da sua lista? (opcional)"
+            auxilio="Ao aceitar, essa pessoa passa a ver as contas já lançadas no nome dela."
+          >
+            {(id) => (
+              <Select id={id} name="pessoaId" defaultValue="">
+                <option value="">Não vincular a ninguém</option>
+                {pessoasSemConta.map((pessoa) => (
+                  <option key={pessoa.id} value={pessoa.id}>
+                    {pessoa.nome}
+                  </option>
+                ))}
+              </Select>
             )}
           </Campo>
 
@@ -217,7 +245,7 @@ function DialogoDoConvite({
             target="_blank"
             rel="noreferrer"
             onClick={aoFechar}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[--radius-padrao] bg-destaque px-4 text-sm font-medium text-destaque-texto hover:opacity-90"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-padrao bg-destaque px-4 text-sm font-medium text-destaque-texto transition-opacity hover:opacity-90 active:opacity-80"
           >
             <WhatsappLogo size={20} weight="fill" aria-hidden />
             Enviar por WhatsApp
@@ -238,7 +266,7 @@ function DialogoDoConvite({
             readOnly
             value={convite?.urlDoConvite ?? ''}
             onFocus={(evento) => evento.currentTarget.select()}
-            className="min-h-11 min-w-0 flex-1 rounded-[--radius-padrao] border border-borda bg-superficie-2 px-3 text-sm text-texto"
+            className="min-h-11 min-w-0 flex-1 rounded-padrao border border-borda bg-superficie-2 px-3 text-sm text-texto"
           />
 
           <Button variante="secundaria" tamanho="icone" aria-label="Copiar link" onClick={copiar}>

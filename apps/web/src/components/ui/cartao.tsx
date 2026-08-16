@@ -7,7 +7,7 @@ export function Cartao({ className, ...props }: HTMLAttributes<HTMLDivElement>) 
       className={cn(
         // Hierarquia por espaçamento e borda, não por sombra: sombra pesada em lista
         // longa vira ruído e atrapalha a leitura de números.
-        'rounded-[--radius-padrao] border border-borda bg-superficie',
+        'rounded-padrao border border-borda bg-superficie',
         className,
       )}
       {...props}

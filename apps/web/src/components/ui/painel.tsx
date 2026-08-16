@@ -66,7 +66,7 @@ export function Painel({ aberto, aoFechar, titulo, descricao, children, rodape }
             type="button"
             onClick={aoFechar}
             aria-label="Fechar"
-            className="-m-2 flex h-11 w-11 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2"
+            className="-m-2 flex h-11 w-11 items-center justify-center rounded-full text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto"
           >
             <X size={20} aria-hidden />
           </button>

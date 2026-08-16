@@ -11,6 +11,25 @@ export function normalizarDescricao(descricao: string): string {
   return descricao.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+/**
+ * Chave que identifica uma compra parcelada entre extratos de meses diferentes.
+ *
+ * O número da parcela **precisa sair** da chave: o extrato de agosto traz
+ * "FARMACIA POPULAR - 3/10" e o de setembro, "FARMACIA POPULAR - 4/10". Mantendo o número,
+ * cada mês pareceria um parcelamento novo, e a compra seria lançada de novo — em setembro
+ * com mais sete parcelas projetadas por cima das que já existiam.
+ */
+export function chaveDoParcelamento(descricao: string): string {
+  const semParcela = descricao
+    .replace(/\b\d{1,2}\s*\/\s*\d{1,2}\b/g, ' ')
+    .replace(/\bparcela\s+\d{1,2}\s+de\s+\d{1,2}\b/gi, ' ')
+    .replace(/\b\d{1,2}\s+de\s+\d{1,2}\b/gi, ' ')
+    // Sobra o separador que ligava a descrição ao número: "Farmácia -  " vira "Farmácia".
+    .replace(/[\s\-–—:]+$/, '');
+
+  return normalizarDescricao(semParcela);
+}
+
 export interface DadosDaDeduplicacao {
   cartaoId: string;
   mesDeReferencia: string;

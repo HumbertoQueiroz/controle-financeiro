@@ -131,13 +131,23 @@ describe('garantias do banco', () => {
 
     await expect(
       prisma.invoice.create({
-        data: { cardId: cartao.id, referenceMonth: '2026-13', dueDate: new Date() },
+        data: {
+          cardId: cartao.id,
+          referenceMonth: '2026-13',
+          closingDate: new Date(),
+          dueDate: new Date(),
+        },
       }),
     ).rejects.toThrow();
 
     await expect(
       prisma.invoice.create({
-        data: { cardId: cartao.id, referenceMonth: '2026-08', dueDate: new Date() },
+        data: {
+          cardId: cartao.id,
+          referenceMonth: '2026-08',
+          closingDate: new Date(),
+          dueDate: new Date(),
+        },
       }),
     ).resolves.toBeDefined();
   });
@@ -158,7 +168,12 @@ describe('garantias do banco', () => {
       data: { ownerUserId: usuario.id, name: 'Cartão', closingDay: 5, dueDay: 12 },
     });
     const fatura = await prisma.invoice.create({
-      data: { cardId: cartao.id, referenceMonth: '2026-08', dueDate: new Date() },
+      data: {
+        cardId: cartao.id,
+        referenceMonth: '2026-08',
+        closingDate: new Date(),
+        dueDate: new Date(),
+      },
     });
 
     const lancamento = {

@@ -86,7 +86,10 @@ export function Entrar() {
 
         <p className="text-center text-sm text-texto-suave">
           Não tem conta?{' '}
-          <Link to="/cadastro" className="font-medium text-destaque underline">
+          <Link
+            to="/cadastro"
+            className="font-medium text-destaque underline transition-opacity hover:opacity-80"
+          >
             Cadastre-se
           </Link>
         </p>

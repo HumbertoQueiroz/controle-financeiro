@@ -119,7 +119,7 @@ export function Conta() {
         {/* Link direto: a rota devolve Content-Disposition e o navegador salva o arquivo. */}
         <a
           href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:3333'}/eu/dados`}
-          className="inline-flex min-h-11 w-fit items-center rounded-[--radius-padrao] border border-borda px-4 text-sm font-medium text-texto hover:bg-superficie-2"
+          className="inline-flex min-h-11 w-fit items-center rounded-padrao border border-borda px-4 text-sm font-medium text-texto hover:bg-superficie-2"
         >
           Baixar meus dados
         </a>

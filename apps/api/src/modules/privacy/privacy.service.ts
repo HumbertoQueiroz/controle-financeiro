@@ -89,7 +89,7 @@ export async function exportarDados(prisma: PrismaClient, userId: string) {
       ...obrigacao,
       amount: obrigacao.amount.toString(),
       settledAmount: obrigacao.settledAmount.toString(),
-      papel: idsDasFichas.includes(obrigacao.debtorId) ? 'DEVEDOR' : 'CREDOR',
+      papel: obrigacao.debtorId && idsDasFichas.includes(obrigacao.debtorId) ? 'DEVEDOR' : 'CREDOR',
       debtorId: undefined,
       creditorId: undefined,
     })),

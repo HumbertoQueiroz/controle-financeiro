@@ -15,7 +15,7 @@ export function Landing() {
 
         <a
           href="/entrar"
-          className="inline-flex min-h-11 items-center rounded-[--radius-padrao] px-4 text-sm font-medium text-texto hover:bg-superficie-2"
+          className="inline-flex min-h-11 items-center rounded-padrao px-4 text-sm font-medium text-texto transition-colors hover:bg-superficie-2"
         >
           Entrar
         </a>
@@ -36,14 +36,14 @@ export function Landing() {
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <a
                 href="/cadastro"
-                className="inline-flex min-h-12 items-center justify-center rounded-[--radius-padrao] bg-destaque px-6 text-sm font-medium text-destaque-texto"
+                className="inline-flex min-h-12 items-center justify-center rounded-padrao bg-destaque px-6 text-sm font-medium text-destaque-texto transition-opacity hover:opacity-90 active:opacity-80"
               >
                 Criar conta grátis
               </a>
 
               <a
                 href="/entrar"
-                className="inline-flex min-h-12 items-center justify-center rounded-[--radius-padrao] border border-borda px-6 text-sm font-medium text-texto"
+                className="inline-flex min-h-12 items-center justify-center rounded-padrao border border-borda px-6 text-sm font-medium text-texto transition-colors hover:border-texto-suave hover:bg-superficie-2"
               >
                 Já tenho conta
               </a>
@@ -75,10 +75,16 @@ export function Landing() {
 
       <footer className="flex flex-col items-center gap-3 border-t border-borda px-5 py-8 text-center">
         <nav className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-          <a href="/termos" className="text-sm text-texto-suave underline">
+          <a
+            href="/termos"
+            className="min-h-11 py-2 text-sm text-texto-suave underline transition-colors hover:text-texto"
+          >
             Termos de Uso
           </a>
-          <a href="/privacidade" className="text-sm text-texto-suave underline">
+          <a
+            href="/privacidade"
+            className="min-h-11 py-2 text-sm text-texto-suave underline transition-colors hover:text-texto"
+          >
             Política de Privacidade
           </a>
         </nav>
@@ -94,7 +100,7 @@ export function Landing() {
 
 function Recurso({ titulo, texto }: { titulo: string; texto: string }) {
   return (
-    <article className="flex flex-col gap-1.5 rounded-[--radius-padrao] border border-borda bg-superficie p-5">
+    <article className="flex flex-col gap-1.5 rounded-padrao border border-borda bg-superficie p-5">
       <h2 className="text-base font-semibold text-texto">{titulo}</h2>
       <p className="text-sm text-texto-suave">{texto}</p>
     </article>
