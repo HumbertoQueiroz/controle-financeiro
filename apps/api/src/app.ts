@@ -19,6 +19,9 @@ import { cardsRoutes } from './modules/cards/cards.routes.js';
 import { groupsRoutes } from './modules/groups/groups.routes.js';
 import { reportsRoutes } from './modules/reports/reports.routes.js';
 import { entriesRoutes } from './modules/entries/entries.routes.js';
+import { participantesRoutes } from './modules/entries/participantes.routes.js';
+import { categoriesRoutes } from './modules/categories/categories.routes.js';
+import { accountsRoutes } from './modules/accounts/accounts.routes.js';
 
 /**
  * Monta a aplicação sem escutar porta.
@@ -56,6 +59,9 @@ export async function buildApp() {
   await app.register(groupsRoutes);
   await app.register(reportsRoutes);
   await app.register(entriesRoutes);
+  await app.register(participantesRoutes);
+  await app.register(categoriesRoutes);
+  await app.register(accountsRoutes);
 
   return app;
 }

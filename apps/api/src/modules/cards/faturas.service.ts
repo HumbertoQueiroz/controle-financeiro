@@ -114,7 +114,7 @@ export async function sincronizarFatura(tx: Transacao, faturaId: string) {
 
   const existente = await tx.obligation.findFirst({
     where: { originType: 'INVOICE', originId: faturaId },
-    select: { id: true },
+    select: { id: true, settledAmount: true },
   });
 
   const dados = {
@@ -122,6 +122,18 @@ export async function sincronizarFatura(tx: Transacao, faturaId: string) {
     amount: totalDevido,
     dueDate: fatura.dueDate,
     paymentMethod: 'CREDIT_CARD' as const,
+    // O `settledAmount` vem junto, preso ao novo total, porque ele é cache do que os
+    // pagamentos dizem e ainda guarda o valor da fatura anterior. Quando o total encolhe —
+    // um estorno, ou a exclusão da importação —, o banco recusa o estado intermediário
+    // pelo CHECK de `settledAmount <= amount`, e a operação inteira falha antes de o
+    // `recalcularSituacao` abaixo ter a chance de corrigir o cache.
+    ...(existente
+      ? {
+          settledAmount: existente.settledAmount.greaterThan(totalDevido)
+            ? totalDevido
+            : existente.settledAmount,
+        }
+      : {}),
   };
 
   // A situação da obrigação não é decidida aqui: ela é recalculada a partir dos
@@ -175,6 +187,7 @@ export async function sincronizarRepasse(tx: Transacao, lancamentoId: string) {
       description: true,
       amount: true,
       forwardedToPersonId: true,
+      categoryId: true,
       invoice: {
         select: { dueDate: true, card: { select: { ownerUserId: true } } },
       },
@@ -213,6 +226,9 @@ export async function sincronizarRepasse(tx: Transacao, lancamentoId: string) {
     amount: lancamento.amount,
     dueDate: lancamento.invoice.dueDate,
     paymentMethod: 'CREDIT_CARD' as const,
+    // O repasse herda a categoria da compra: é o mesmo gasto visto do outro lado, e
+    // classificar duas vezes a mesma coisa só cria chance de divergir.
+    categoryId: lancamento.categoryId,
   };
 
   if (existente) {

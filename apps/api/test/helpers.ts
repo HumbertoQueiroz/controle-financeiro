@@ -12,7 +12,7 @@ export async function criarApp(): Promise<App> {
   return buildApp();
 }
 
-export const SENHA_PADRAO = 'senha-de-teste-123';
+export const SENHA_PADRAO = 'Senha-De-Teste-123';
 
 /**
  * Cria um usuário já pronto para logar: com Person espelho e os termos aceitos.

@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { AceiteDeTermos } from '@/components/aceite-de-termos';
 import { Button } from '@/components/ui/button';
 import { Campo, Input } from '@/components/ui/campo';
+import { CampoDeSenha } from '@/components/ui/campo-de-senha';
 import { Cartao } from '@/components/ui/cartao';
 
 export function Cadastro() {
@@ -54,18 +55,7 @@ export function Cadastro() {
               {(id) => <Input id={id} name="email" type="email" autoComplete="email" required />}
             </Campo>
 
-            <Campo rotulo="Senha" auxilio="Pelo menos 8 caracteres">
-              {(id) => (
-                <Input
-                  id={id}
-                  name="senha"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              )}
-            </Campo>
+            <CampoDeSenha name="senha" required />
 
             <AceiteDeTermos />
 

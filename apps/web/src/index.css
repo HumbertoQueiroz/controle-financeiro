@@ -27,6 +27,19 @@
   --cor-negativo: #b91c1c;
   --cor-negativo-suave: #fef2f2;
   --cor-atencao: #a16207;
+  --cor-atencao-suave: #fefce8;
+
+  /*
+   * O lado do dinheiro na navegação: azul no que entra, laranja no que sai.
+   *
+   * Separado de positivo/negativo de propósito. Verde e vermelho dizem "bom" e "ruim", e
+   * uma conta a pagar não é uma má notícia — é uma das duas metades do orçamento. Aqui a
+   * cor só diz de que lado a tela está, e vem sempre com o rótulo escrito ao lado.
+   */
+  --cor-entrada: #1d4ed8;
+  --cor-entrada-suave: #eff6ff;
+  --cor-saida: #c2410c;
+  --cor-saida-suave: #fff7ed;
 
   /* 8px: arredonda sem parecer pílula. Vale para campo, botão e cartão. */
   --raio: 0.5rem;
@@ -49,6 +62,12 @@
   --cor-negativo: #f87171;
   --cor-negativo-suave: #2b1214;
   --cor-atencao: #fbbf24;
+  --cor-atencao-suave: #2b2008;
+
+  --cor-entrada: #93c5fd;
+  --cor-entrada-suave: #10203c;
+  --cor-saida: #fdba74;
+  --cor-saida-suave: #2b1a0c;
 }
 
 /*
@@ -70,6 +89,11 @@
   --color-negativo: var(--cor-negativo);
   --color-negativo-suave: var(--cor-negativo-suave);
   --color-atencao: var(--cor-atencao);
+  --color-atencao-suave: var(--cor-atencao-suave);
+  --color-entrada: var(--cor-entrada);
+  --color-entrada-suave: var(--cor-entrada-suave);
+  --color-saida: var(--cor-saida);
+  --color-saida-suave: var(--cor-saida-suave);
 
   /*
    * Gera a classe `rounded-padrao`.
@@ -94,6 +118,42 @@
     color: var(--cor-texto);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * O ícone do seletor nativo de data e mês.
+   *
+   * O navegador desenha `::-webkit-calendar-picker-indicator` em preto fixo, sem herdar
+   * `color` — no tema escuro ele some contra o fundo do campo. `invert` é o único caminho
+   * que funciona: o ícone é uma imagem embutida no user agent, não um glifo colorível.
+   */
+  .dark input[type='date']::-webkit-calendar-picker-indicator,
+  .dark input[type='month']::-webkit-calendar-picker-indicator,
+  .dark input[type='time']::-webkit-calendar-picker-indicator,
+  .dark input[type='datetime-local']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.7;
+    cursor: pointer;
+  }
+
+  .dark input[type='date']::-webkit-calendar-picker-indicator:hover,
+  .dark input[type='month']::-webkit-calendar-picker-indicator:hover,
+  .dark input[type='time']::-webkit-calendar-picker-indicator:hover,
+  .dark input[type='datetime-local']::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  /* As setinhas do campo numérico. Numa tela em que o valor é digitado, elas só ocupam a
+     lateral e convidam a um clique que ninguém quer. */
+  .sem-setinhas::-webkit-outer-spin-button,
+  .sem-setinhas::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .sem-setinhas {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 
   /* Foco sempre visível: navegação por teclado é piso de acessibilidade, não extra. */
@@ -128,4 +188,106 @@
   .pb-seguro {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  /*
+   * Esconde a barra de rolagem sem tirar a rolagem.
+   *
+   * Só use onde exista **outra** indicação de que há mais conteúdo — no `Painel`, a seta
+   * animada do rodapé. Esconder a barra sem substituto deixa o conteúdo de baixo
+   * invisível: quem não arrastar por acaso nunca descobre que ele existe.
+   */
+  .sem-barra-de-rolagem {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sem-barra-de-rolagem::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/*
+ * Impressão nativa: o navegador é o gerador de PDF.
+ *
+ * A folha do fechamento é a **mesma** tela, sem a navegação. Montar um segundo HTML só
+ * para o papel divergiria da tela no primeiro ajuste, e o número conferido deixaria de ser
+ * o número impresso — que é justamente o que ninguém pode descobrir depois de assinar.
+ *
+ * Tudo preto sobre branco: o tema escuro imprimiria uma página inteira de toner, e os
+ * cinzas do tema claro somem no papel.
+ */
+@media print {
+  .sem-impressao,
+  [data-impressao='esconder'] {
+    display: none !important;
+  }
+
+  .apenas-impressao {
+    display: flex !important;
+  }
+
+  :root,
+  .dark {
+    --cor-fundo: #ffffff;
+    --cor-superficie: #ffffff;
+    --cor-superficie-2: #ffffff;
+    --cor-texto: #000000;
+    --cor-texto-suave: #404040;
+    --cor-borda: #9ca3af;
+    --cor-positivo: #000000;
+    --cor-negativo: #000000;
+    --cor-destaque: #000000;
+    --cor-entrada: #000000;
+    --cor-entrada-suave: #ffffff;
+    --cor-saida: #000000;
+    --cor-saida-suave: #ffffff;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  /* Nada de sombra, canto arredondado ou fundo cinza: no papel viram borrão. */
+  * {
+    box-shadow: none !important;
+  }
+
+  /* Uma seção não pode começar no fim de uma página e continuar na seguinte sem título. */
+  section,
+  li {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+}
+
+/* Fora da impressão, o bloco de assinaturas não existe. */
+.apenas-impressao {
+  display: none;
+}
+
+/*
+ * A seta que indica "tem mais para baixo".
+ *
+ * Movimento curto e lento: a seta fica visível enquanto houver conteúdo abaixo, e uma
+ * animação chamativa parada na tela o tempo todo cansa. Quem pediu menos movimento no
+ * sistema já é atendido pela regra de `prefers-reduced-motion` acima, que a congela.
+ */
+@keyframes descer {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.65;
+  }
+
+  50% {
+    transform: translateY(4px);
+    opacity: 1;
+  }
+}
+
+@theme {
+  --animate-descer: descer 1.8s ease-in-out infinite;
 }

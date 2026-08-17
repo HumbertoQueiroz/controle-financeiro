@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
 import { Carregando, Erro, Vazio } from '@/components/ui/estados';
 import { Valor } from '@/components/ui/valor';
-import { SeletorDeResponsavel } from '@/features/cartao/seletor-de-responsavel';
+import { SeletorDePessoa } from '@/features/pessoas/seletor-de-pessoa';
 
 /**
  * Todos os parcelamentos em curso, num lugar só.
@@ -112,7 +112,7 @@ export function Parcelamentos() {
                 <div className="flex flex-col gap-2 border-t border-borda pt-3 sm:flex-row sm:items-end">
                   <label className="flex flex-1 flex-col gap-1">
                     <span className="text-xs text-texto-suave">Quem paga</span>
-                    <SeletorDeResponsavel
+                    <SeletorDePessoa
                       valor={parcelamento.responsavelPessoaId}
                       aoMudar={(pessoaId) =>
                         trocarResponsavel.mutate({ id: parcelamento.id, pessoaId })

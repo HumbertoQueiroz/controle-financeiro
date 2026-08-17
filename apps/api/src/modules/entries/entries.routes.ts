@@ -6,6 +6,7 @@ import {
   criarLancamentoSchema,
   criarRecorrenciaSchema,
   darBaixaSchema,
+  dashboardSchema,
   filtroDeLancamentosSchema,
   lancamentoSchema,
   mesDeReferenciaSchema,
@@ -16,6 +17,7 @@ import { z } from 'zod';
 import * as service from './entries.service.js';
 import * as recorrencias from './recorrencias.service.js';
 import * as orcamento from './orcamento.service.js';
+import * as dashboard from './dashboard.service.js';
 
 const paramsId = z.object({ id: z.string().uuid() });
 const ok = z.object({ ok: z.boolean() });
@@ -26,8 +28,19 @@ export async function entriesRoutes(app: FastifyInstance) {
   rotas.addHook('preHandler', app.requireAuth);
 
   // ------------------------------------------------------------------
-  // Orçamento do mês
+  // Dashboard e orçamento do mês
   // ------------------------------------------------------------------
+  rotas.get(
+    '/dashboard',
+    {
+      schema: {
+        querystring: z.object({ mes: mesDeReferenciaSchema }),
+        response: { 200: dashboardSchema },
+      },
+    },
+    async (request) => dashboard.gerarDashboard(app.prisma, request.usuario!.id, request.query.mes),
+  );
+
   rotas.get(
     '/orcamento',
     {
@@ -98,6 +111,29 @@ export async function entriesRoutes(app: FastifyInstance) {
     '/lancamentos/:id/baixa',
     { schema: { params: paramsId, response: { 200: lancamentoSchema } } },
     async (request) => service.estornarBaixa(app.prisma, request.params.id, request.usuario!.id),
+  );
+
+  /**
+   * Confirma um pagamento que o devedor declarou.
+   *
+   * Só quem recebe pode chamar. A tela esconde o botão para os demais, mas quem decide é
+   * o serviço: esconder um botão nunca foi autorização.
+   */
+  rotas.post(
+    '/lancamentos/:id/pagamentos/:pagamentoId/confirmar',
+    {
+      schema: {
+        params: paramsId.extend({ pagamentoId: z.string().uuid() }),
+        response: { 200: lancamentoSchema },
+      },
+    },
+    async (request) =>
+      service.confirmarPagamentoDoLancamento(
+        app.prisma,
+        request.params.id,
+        request.params.pagamentoId,
+        request.usuario!.id,
+      ),
   );
 
   /** Remove um pagamento específico, mantendo os demais do título. */

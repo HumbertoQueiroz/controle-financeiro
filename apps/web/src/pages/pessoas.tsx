@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash } from '@phosphor-icons/react';
+import { Plus, Receipt, Trash } from '@phosphor-icons/react';
 import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Pessoa } from '@controle/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Campo, Input } from '@/components/ui/campo';
+import { Campo, Input, InputDeTelefone } from '@/components/ui/campo';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
 import { Carregando, Erro, Vazio } from '@/components/ui/estados';
 import { Painel } from '@/components/ui/painel';
 
 export function Pessoas() {
+  const navegar = useNavigate();
   const clienteDeQuery = useQueryClient();
   const [aberto, setAberto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -85,18 +87,33 @@ export function Pessoas() {
                   )}
                 </div>
 
-                {/* A própria ficha não é editável: é a identidade do usuário nas
-                    obrigações, e apagá-la quebraria os saldos onde ele aparece. */}
-                {pessoa.editavel && (
-                  <Button
-                    variante="fantasma"
-                    tamanho="icone"
-                    aria-label={`Excluir ${pessoa.nome}`}
-                    onClick={() => excluir.mutate(pessoa.id)}
-                  >
-                    <Trash size={18} aria-hidden />
-                  </Button>
-                )}
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Fechamento só para terceiros: acertar contas consigo mesmo não é
+                      uma operação que exista. */}
+                  {pessoa.editavel && (
+                    <Button
+                      variante="secundaria"
+                      tamanho="pequeno"
+                      onClick={() => navegar(`/app/pessoas/${pessoa.id}/fechamento`)}
+                    >
+                      <Receipt size={16} aria-hidden />
+                      Fechamento
+                    </Button>
+                  )}
+
+                  {/* A própria ficha não é editável: é a identidade do usuário nas
+                      obrigações, e apagá-la quebraria os saldos onde ele aparece. */}
+                  {pessoa.editavel && (
+                    <Button
+                      variante="fantasma"
+                      tamanho="icone"
+                      aria-label={`Excluir ${pessoa.nome}`}
+                      onClick={() => excluir.mutate(pessoa.id)}
+                    >
+                      <Trash size={18} aria-hidden />
+                    </Button>
+                  )}
+                </div>
               </Cartao>
             </li>
           ))}
@@ -114,8 +131,8 @@ export function Pessoas() {
           <Campo rotulo="E-mail (opcional)">
             {(id) => <Input id={id} name="email" type="email" />}
           </Campo>
-          <Campo rotulo="WhatsApp (opcional)">
-            {(id) => <Input id={id} name="telefone" type="tel" />}
+          <Campo rotulo="WhatsApp (opcional)" auxilio="Só números, com DDD.">
+            {(id) => <InputDeTelefone id={id} name="telefone" />}
           </Campo>
 
           {erro && (

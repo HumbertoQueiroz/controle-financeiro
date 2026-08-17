@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { CODIGO_DO_PAIS } from '@controle/shared';
 import { env } from '../env.js';
 
 /** Sete dias: tempo de sobra para a pessoa ver a mensagem, curto o bastante para um link perdido não ficar válido para sempre. */
@@ -34,6 +35,10 @@ export function urlDoConvite(token: string): string {
  *
  * Sem telefone, `wa.me` abre o app para a pessoa escolher o contato — é o caso comum,
  * porque o dono costuma saber quem é mas não ter o número digitado no sistema.
+ *
+ * Com telefone, o `wa.me` exige o número **em formato internacional**: `wa.me/65996452787`
+ * não abre a conversa, ou abre a conversa errada em outro país. O banco guarda só o número
+ * nacional, então o código do país entra aqui, na montagem do link.
  */
 export function urlDoWhatsApp(
   token: string,
@@ -43,9 +48,23 @@ export function urlDoWhatsApp(
     `${opcoes.nomeDeQuemConvida} compartilhou o controle financeiro com você. ` +
     `Acesse para ver: ${urlDoConvite(token)}`;
 
-  const destino = opcoes.telefone ? opcoes.telefone.replace(/\D/g, '') : '';
+  const destino = numeroInternacional(opcoes.telefone);
 
   return `https://wa.me/${destino}?text=${encodeURIComponent(mensagem)}`;
+}
+
+/**
+ * Número pronto para o `wa.me`, ou vazio quando não há telefone.
+ *
+ * Tolera um registro antigo que já tenha o `55` gravado: prefixar de novo produziria
+ * `5555…`, e o link falharia justamente para os contatos mais antigos.
+ */
+function numeroInternacional(telefone?: string | null): string {
+  const digitos = (telefone ?? '').replace(/\D/g, '');
+
+  if (digitos.length === 0) return '';
+
+  return digitos.startsWith(CODIGO_DO_PAIS) ? digitos : `${CODIGO_DO_PAIS}${digitos}`;
 }
 
 export function calcularExpiracao(agora = new Date()): Date {

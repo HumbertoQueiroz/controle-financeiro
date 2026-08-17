@@ -3,16 +3,40 @@
 ## Criar uma conta
 
 1. Abra a página inicial e toque em **Criar conta grátis**.
-2. Preencha nome, e-mail e uma senha de pelo menos 8 caracteres.
+2. Preencha nome, e-mail e uma senha (as exigências estão logo abaixo).
 3. Marque as duas caixas de aceite: **Termos de Uso** e **Política de Privacidade**. Os
    links abrem em nova aba, então você pode ler sem perder o que já preencheu.
 4. Toque em **Criar conta**.
 
 Você entra direto, já dentro do sistema.
 
-> **Sobre a senha:** o limite não é em caracteres, é em bytes. Cada letra acentuada ocupa o
-> dobro, então uma senha só de acentos cabe menos do que parece. Se aparecer "a senha é
-> longa demais", encurte um pouco.
+## A senha
+
+O campo mostra a lista de exigências **enquanto você digita**, e cada uma fica verde com um
+✓ quando é cumprida:
+
+| Exigência                    | Exemplo                                  |
+| ---------------------------- | ---------------------------------------- |
+| Pelo menos 10 caracteres     |                                          |
+| Uma letra minúscula          | `a`                                      |
+| Uma letra maiúscula          | `A`                                      |
+| Um número                    | `7`                                      |
+| Um símbolo                   | `!` `?` `@` `-`                          |
+| Não pode ser uma senha comum | `Senha@123` e `Qwerty@123` são recusadas |
+
+A lista aparece antes de você errar, e não como recusa depois de enviar. Quem já escolheu
+uma senha e a viu recusada tende a emendar um `1!` no fim — que é exatamente a primeira
+coisa que um ataque tenta.
+
+O botão de olho ao lado do campo mostra o que você digitou. Senha invisível empurra para a
+senha curta, porque é a única que dá para digitar sem errar.
+
+> **O limite de cima não é em caracteres, é em bytes.** Cada letra acentuada ocupa o dobro,
+> então uma senha só de acentos cabe menos do que parece. Se aparecer "a senha é longa
+> demais", encurte um pouco.
+
+Essas exigências valem para **senha nova**: no cadastro, na troca de senha e na criação de
+usuário pelo administrador. Ao **entrar**, sua senha atual continua valendo como está.
 
 ## Entrar
 

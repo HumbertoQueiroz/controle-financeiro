@@ -7,6 +7,7 @@ import { formatarData } from '@/lib/utils';
 import { useAutenticacao } from '@/auth/auth-context';
 import { Button } from '@/components/ui/button';
 import { Campo, Input, Select } from '@/components/ui/campo';
+import { CampoDeSenha } from '@/components/ui/campo-de-senha';
 import { TituloDaSecao } from '@/components/ui/cartao';
 import { Carregando, Erro } from '@/components/ui/estados';
 import { ListaDeDados, type ColunaDaLista } from '@/components/ui/lista-de-dados';
@@ -136,9 +137,7 @@ export function AdminUsuarios() {
           <Campo rotulo="E-mail">
             {(id) => <Input id={id} name="email" type="email" required />}
           </Campo>
-          <Campo rotulo="Senha provisória" auxilio="Pelo menos 8 caracteres">
-            {(id) => <Input id={id} name="senha" type="password" minLength={8} required />}
-          </Campo>
+          <CampoDeSenha rotulo="Senha provisória" name="senha" required />
           <Campo rotulo="Papel">
             {(id) => (
               <Select id={id} name="papel" defaultValue="USER">

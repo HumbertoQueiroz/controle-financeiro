@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAutenticacao } from '@/auth/auth-context';
 import { Button } from '@/components/ui/button';
 import { Campo, Input } from '@/components/ui/campo';
+import { CampoDeSenha } from '@/components/ui/campo-de-senha';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
 import { Painel } from '@/components/ui/painel';
 
@@ -81,18 +82,7 @@ export function Conta() {
             )}
           </Campo>
 
-          <Campo rotulo="Nova senha" auxilio="Pelo menos 8 caracteres">
-            {(id) => (
-              <Input
-                id={id}
-                name="novaSenha"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            )}
-          </Campo>
+          <CampoDeSenha rotulo="Nova senha" name="novaSenha" required />
 
           {mensagem && <p className="text-sm text-positivo">{mensagem}</p>}
           {erro && (

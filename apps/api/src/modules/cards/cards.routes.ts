@@ -8,9 +8,11 @@ import {
   criarCartaoSchema,
   faturaSchema,
   lancamentoDaFaturaSchema,
+  mesDeReferenciaSchema,
   parcelamentoSchema,
   previaDaImportacaoSchema,
   repassarLancamentoSchema,
+  resultadoDaExclusaoSchema,
   resultadoDaImportacaoSchema,
 } from '@controle/shared';
 import { z } from 'zod';
@@ -101,10 +103,25 @@ export async function cardsRoutes(app: FastifyInstance) {
         throw new ErroDeRegra('O arquivo excede o tamanho máximo de 5 MB');
       }
 
-      return importacao.analisarArquivo(app.prisma, request.usuario!.id, request.params.id, {
-        nome: arquivo.filename,
-        conteudo,
-      });
+      // O mês vem junto do arquivo, no mesmo multipart: é ele que define a fatura de
+      // todas as linhas, e sem ele a prévia teria de adivinhar.
+      //
+      // O tipo de `fields` cobre o caso de um campo repetido, que aqui não acontece — daí
+      // a checagem em vez do acesso direto.
+      const campoDoMes = arquivo.fields.mes;
+      const mes = mesDeReferenciaSchema.parse(
+        campoDoMes && !Array.isArray(campoDoMes) && campoDoMes.type === 'field'
+          ? String(campoDoMes.value)
+          : '',
+      );
+
+      return importacao.analisarArquivo(
+        app.prisma,
+        request.usuario!.id,
+        request.params.id,
+        { nome: arquivo.filename, conteudo },
+        mes,
+      );
     },
   );
 
@@ -133,6 +150,24 @@ export async function cardsRoutes(app: FastifyInstance) {
 
   rotas.get('/cartoes/:id/importacoes', { schema: { params: paramsId } }, async (request) =>
     importacao.listarImportacoes(app.prisma, request.params.id, request.usuario!.id),
+  );
+
+  /** Desfaz uma importação: apaga o que ela criou e recalcula as faturas. */
+  rotas.delete(
+    '/cartoes/:id/importacoes/:importacaoId',
+    {
+      schema: {
+        params: z.object({ id: z.string().uuid(), importacaoId: z.string().uuid() }),
+        response: { 200: resultadoDaExclusaoSchema },
+      },
+    },
+    async (request) =>
+      importacao.excluirImportacao(
+        app.prisma,
+        request.params.id,
+        request.usuario!.id,
+        request.params.importacaoId,
+      ),
   );
 
   // ------------------------------------------------------------------

@@ -9,10 +9,9 @@ import {
   normalizarDescricao,
 } from '../../lib/dedupe.js';
 import { lerCsv } from '../../lib/csv/parser.js';
-import { ErroDeRegra } from '../../lib/erros.js';
+import { ErroDeRegra, ErroNaoEncontrado } from '../../lib/erros.js';
 import {
   carregarCartaoDoDono,
-  faturaDaCompra,
   obterOuCriarFatura,
   sincronizarFatura,
   sincronizarRepasse,
@@ -57,8 +56,12 @@ export async function analisarArquivo(
   donoId: string,
   cartaoId: string,
   arquivo: ArquivoImportado,
+  mesSelecionado: string,
 ) {
-  const cartao = await carregarCartaoDoDono(prisma, cartaoId, donoId);
+  // O cartão é carregado pela posse, e não pelos dados: nada aqui depende mais do dia de
+  // fechamento, mas importar para o cartão de outra pessoa continua tendo de ser recusado.
+  await carregarCartaoDoDono(prisma, cartaoId, donoId);
+
   const leitura = lerCsv(arquivo.conteudo);
 
   const lancamentos = leitura.linhas.filter((linha) => linha.tipo === 'LANCAMENTO');
@@ -67,7 +70,8 @@ export async function analisarArquivo(
   const comOcorrencia = atribuirOcorrencias(
     lancamentos.map((linha) => ({
       cartaoId,
-      // A fatura de cada linha sai da data da compra, então o mês não entra na ocorrência.
+      // A ocorrência distingue linhas idênticas dentro do arquivo; o mês é o mesmo para
+      // todas e não acrescenta nada à chave.
       mesDeReferencia: '',
       data: linha.data,
       descricao: linha.descricao,
@@ -99,6 +103,27 @@ export async function analisarArquivo(
     ]),
   );
 
+  // A categoria que descrições iguais já receberam neste cartão. Categoria arquivada fica
+  // de fora: sugerir de volta o que a pessoa tirou das listas seria desfazer a decisão dela.
+  const classificados = await prisma.invoiceEntry.findMany({
+    where: {
+      invoice: { cardId: cartaoId },
+      categoryId: { not: null },
+      category: { archived: false },
+    },
+    select: { description: true, categoryId: true },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const categoriaPorDescricao = new Map<string, string>();
+
+  for (const lancamento of classificados) {
+    const chave = normalizarDescricao(lancamento.description);
+
+    // O `orderBy` desc põe o mais recente primeiro; o primeiro a chegar é o que vale.
+    if (!categoriaPorDescricao.has(chave)) categoriaPorDescricao.set(chave, lancamento.categoryId!);
+  }
+
   const avulsos: ReturnType<typeof montarLinha>[] = [];
   const novosParcelamentos: (ReturnType<typeof montarLinha> & {
     parcelaNumero: number;
@@ -120,9 +145,27 @@ export async function analisarArquivo(
       data: linha.data,
       descricao: linha.descricao,
       valor: linha.valor,
-      faturaSugerida: faturaDaCompra(linha.data, cartao.closingDay),
+      // A fatura de toda linha é o **mês escolhido na tela anterior**, e não a calculada a
+      // partir da data da compra.
+      //
+      // O arquivo baixado do banco já **é** a fatura daquele mês: a compra de 30/07 está
+      // nele justamente porque caiu na fatura de agosto, depois do fechamento. Recalcular
+      // pela data é o sistema discordar do extrato que está importando — e o resultado era
+      // um punhado de linhas mandadas para julho com um aviso de divergência que a própria
+      // sugestão tinha inventado.
+      //
+      // O seletor por linha continua ali para o caso raro de o arquivo misturar meses de
+      // verdade. Aí a divergência é escolha de quem importa, não palpite do sistema.
+      faturaSugerida: mesSelecionado,
+      // Quem já classificou "Uber" uma vez não deveria decidir de novo. Mesma ideia da
+      // classificação em lote, e a mesma normalização de descrição.
+      categoriaSugerida: categoriaPorDescricao.get(normalizarDescricao(linha.descricao)) ?? null,
       parcelaNumero: linha.parcelaNumero ?? null,
       parcelaTotal: linha.parcelaTotal ?? null,
+      // Viaja até a gravação porque é o que distingue duas compras legitimamente iguais no
+      // mesmo dia. Recalcular lá seria recalcular sobre uma lista que a tela pode ter
+      // reordenado, e a ordem é justamente o que define a ocorrência.
+      ocorrencia: linha.ocorrencia,
     };
   }
 
@@ -179,23 +222,100 @@ export async function analisarArquivo(
     })),
   );
 
+  // O que já está na fatura sai da lista de decisões e vira uma seção fechada.
+  //
+  // A checagem usa **o mesmo hash que a gravação vai usar**, e não uma comparação por
+  // descrição: qualquer critério diferente faria a tela prometer uma coisa e o banco fazer
+  // outra — linha anunciada como nova que o `skipDuplicates` descarta, ou o contrário.
+  const jaNaFatura = await hashesDaFatura(prisma, cartaoId, mesSelecionado);
+  const jaExiste = (linha: ReturnType<typeof montarLinha>) =>
+    jaNaFatura.has(
+      calcularDedupeHash({
+        cartaoId,
+        mesDeReferencia: linha.faturaSugerida,
+        data: linha.data,
+        descricao: linha.descricao,
+        valor: linha.valor,
+        parcelaNumero: linha.parcelaNumero,
+        parcelaTotal: linha.parcelaTotal,
+        ocorrencia: linha.ocorrencia,
+      }),
+    );
+
+  // O pagamento que aparece no extrato quitou a fatura **anterior**, nunca a que está sendo
+  // importada: o cartão só cobra depois de fechar o ciclo, então o débito de 05/08 é da
+  // fatura de julho. É a única linha do arquivo que pertence a outro mês, e mandá-la para o
+  // mês escolhido quitava a fatura de agosto com o dinheiro de julho.
+  const mesDoPagamento = somarMeses(mesSelecionado, -1);
+  const situacaoDaAnterior = await situacaoDaFatura(prisma, cartaoId, mesDoPagamento);
+
   return {
     cartaoId,
     layout: leitura.layout,
-    faturaSugerida: faturaMaisFrequente(
-      [...avulsos, ...novosParcelamentos].map((linha) => linha.faturaSugerida),
-      cartao.closingDay,
-    ),
-    lancamentos: avulsos,
+    faturaSugerida: mesSelecionado,
+    lancamentos: avulsos.filter((linha) => !jaExiste(linha)),
+    lancamentosConhecidos: avulsos.filter(jaExiste),
     novosParcelamentos,
     parcelamentosAnteriores,
-    pagamentos: pagamentosComOcorrencia.map(montarLinha),
+    pagamentos: pagamentosComOcorrencia.map((linha) => ({
+      ...montarLinha(linha),
+      faturaSugerida: mesDoPagamento,
+      faturaExiste: situacaoDaAnterior !== null,
+      saldoEmAberto: situacaoDaAnterior?.saldoEmAberto ?? null,
+      // Ignorar é o padrão quando a fatura anterior não existe, e é o caso da primeira
+      // importação de todo cartão. É a única escolha que não inventa dado nenhum: a fatura
+      // de julho é de antes de o sistema existir, e não há o que abater.
+      acaoSugerida: situacaoDaAnterior === null ? ('IGNORAR' as const) : ('REGISTRAR' as const),
+    })),
     linhasNaoReconhecidas: leitura.ignoradas,
   };
 }
 
-/** A fatura do arquivo é a que aparece em mais linhas — o resto é exceção. */
-function faturaMaisFrequente(meses: string[], _diaDeFechamento: number): string {
+/** Os hashes de deduplicação já gravados na fatura do mês, para saber o que não é novidade. */
+async function hashesDaFatura(
+  prisma: PrismaClient,
+  cartaoId: string,
+  mes: string,
+): Promise<Set<string>> {
+  const lancamentos = await prisma.invoiceEntry.findMany({
+    where: { invoice: { cardId: cartaoId, referenceMonth: mes } },
+    select: { dedupeHash: true },
+  });
+
+  return new Set(lancamentos.map((lancamento) => lancamento.dedupeHash));
+}
+
+/** A fatura do mês e quanto falta pagar nela, ou `null` se ela não existe no sistema. */
+async function situacaoDaFatura(
+  tx: Prisma.TransactionClient | PrismaClient,
+  cartaoId: string,
+  mes: string,
+) {
+  const fatura = await tx.invoice.findUnique({
+    where: { cardId_referenceMonth: { cardId: cartaoId, referenceMonth: mes } },
+    select: { id: true, status: true },
+  });
+
+  if (!fatura) return null;
+
+  const obrigacao = await tx.obligation.findFirst({
+    where: { originType: 'INVOICE', originId: fatura.id },
+    select: { amount: true, settledAmount: true },
+  });
+
+  const emAberto = obrigacao
+    ? paraCentavos(obrigacao.amount.toString()) - paraCentavos(obrigacao.settledAmount.toString())
+    : 0;
+
+  return {
+    id: fatura.id,
+    status: fatura.status,
+    saldoEmAberto: deCentavos(Math.max(emAberto, 0)),
+  };
+}
+
+/** O mês que aparece em mais linhas divergentes, para a mensagem do aviso citar um só. */
+function faturaMaisFrequente(meses: string[]): string {
   if (meses.length === 0) {
     const agora = new Date();
 
@@ -229,16 +349,15 @@ export async function confirmarImportacao(
     (linha) => linha.fatura !== dados.mesSelecionado,
   );
 
-  // A divergência precisa ser vista antes de gravar: o caso comum é escolher agosto e o
-  // arquivo ser de julho, e o erro só apareceria quando o total da fatura não batesse.
+  // Toda linha nasce no mês escolhido, então divergir aqui significa que **a pessoa
+  // trocou** a fatura de alguma delas. O aviso continua valendo: mandar um lançamento para
+  // outro mês é decisão de peso, e o erro só apareceria quando o total não batesse com o do
+  // banco. O que mudou é que agora ele nunca dispara por conta própria.
   if (divergentes.length > 0 && !dados.divergenciaAceita) {
-    const encontrada = faturaMaisFrequente(
-      divergentes.map((linha) => linha.fatura),
-      cartao.closingDay,
-    );
+    const encontrada = faturaMaisFrequente(divergentes.map((linha) => linha.fatura));
 
     throw new ErroDeRegra(
-      `${divergentes.length} lançamento(s) vão para a fatura de ${encontrada}, e não ${dados.mesSelecionado}. Confirme para prosseguir.`,
+      `Você mandou ${divergentes.length} lançamento(s) para a fatura de ${encontrada}, e não ${dados.mesSelecionado}. Confirme para prosseguir.`,
     );
   }
 
@@ -248,9 +367,19 @@ export async function confirmarImportacao(
     ),
   );
 
+  const categoriasValidas = new Set(
+    (await prisma.category.findMany({ where: { ownerId: donoId }, select: { id: true } })).map(
+      (categoria) => categoria.id,
+    ),
+  );
+
   for (const linha of [...dados.lancamentos, ...dados.novosParcelamentos]) {
     if (linha.responsavelPessoaId && !pessoasValidas.has(linha.responsavelPessoaId)) {
       throw new ErroDeRegra('Responsável não encontrado entre as suas pessoas');
+    }
+
+    if (linha.categoriaId && !categoriasValidas.has(linha.categoriaId)) {
+      throw new ErroDeRegra('Categoria não encontrada entre as suas categorias');
     }
   }
 
@@ -373,20 +502,59 @@ export async function confirmarImportacao(
 
       let pagamentosRegistrados = 0;
       let pagamentosIgnorados = 0;
+      let saldosAnterioresCriados = 0;
 
       for (const linha of dados.pagamentos) {
-        const faturaId = await faturaDe(linha.fatura);
-
-        const fatura = await tx.invoice.findUniqueOrThrow({
-          where: { id: faturaId },
-          select: { status: true },
-        });
-
-        // O README manda registrar o pagamento apenas se a fatura estiver em aberto.
-        if (fatura.status !== 'OPEN') {
+        if (linha.acao === 'IGNORAR') {
           pagamentosIgnorados += 1;
           continue;
         }
+
+        let situacao = await situacaoDaFatura(tx, cartaoId, linha.fatura);
+
+        if (linha.acao === 'SALDO_ANTERIOR') {
+          // A fatura que falta é reconstruída pelo único dado que temos dela: o valor que
+          // foi pago. Nasce e morre no mesmo instante, com um lançamento que se identifica
+          // como o que é — sem isso, o dinheiro que saiu do banco não apareceria em lugar
+          // nenhum e o saldo da conta ficaria alto para sempre.
+          const faturaId = await faturaDe(linha.fatura);
+
+          await inserirLancamento(tx, {
+            faturaId,
+            cartaoId,
+            mes: linha.fatura,
+            linha: {
+              data: linha.data,
+              descricao: 'Saldo anterior (não importado)',
+              valor: linha.valor,
+              responsavelPessoaId: null,
+            },
+            importacaoId: importacao.id,
+            projetada: false,
+            parcelamentoId: null,
+          });
+
+          await sincronizarFatura(tx, faturaId);
+          saldosAnterioresCriados += 1;
+          situacao = await situacaoDaFatura(tx, cartaoId, linha.fatura);
+        }
+
+        // Nunca criar fatura por causa de pagamento: fatura nasce de lançamento. Criar aqui
+        // deixava para trás uma fatura vazia de R$ 0,00 no a pagar, e o pagamento sumia
+        // em silêncio logo depois por não haver obrigação a que se anexar.
+        if (!situacao) {
+          pagamentosIgnorados += 1;
+          continue;
+        }
+
+        // O README manda registrar o pagamento apenas se a fatura estiver em aberto.
+        if (situacao.status !== 'OPEN') {
+          pagamentosIgnorados += 1;
+          continue;
+        }
+
+        const faturaId = situacao.id;
+        faturas.set(linha.fatura, faturaId);
 
         const obrigacao = await tx.obligation.findFirst({
           where: { originType: 'INVOICE', originId: faturaId },
@@ -396,6 +564,16 @@ export async function confirmarImportacao(
         if (!obrigacao) {
           pagamentosIgnorados += 1;
           continue;
+        }
+
+        // Pagar mais do que se deve é o sintoma de o pagamento ter ido para a fatura errada,
+        // e antes disso passava calado: o excedente evaporava e a fatura virava paga.
+        if (paraCentavos(linha.valor) > paraCentavos(situacao.saldoEmAberto)) {
+          if (!dados.excedenteAceito) {
+            throw new ErroDeRegra(
+              `O pagamento de ${linha.valor} é maior que o saldo em aberto da fatura de ${linha.fatura} (${situacao.saldoEmAberto}). Confirme para prosseguir.`,
+            );
+          }
         }
 
         const dedupeHash = calcularDedupeHash({
@@ -422,6 +600,9 @@ export async function confirmarImportacao(
           pagoEm: linha.data,
           dedupeHash,
           importBatchId: importacao.id,
+          // O extrato do banco é a prova do pagamento da fatura, e quem importa é o dono
+          // do cartão — o mesmo que deve à instituição. Não há terceiro para confirmar.
+          confirmed: true,
         });
 
         pagamentosRegistrados += 1;
@@ -456,6 +637,7 @@ export async function confirmarImportacao(
         parcelamentosCriados,
         pagamentosRegistrados,
         pagamentosIgnorados,
+        saldosAnterioresCriados,
         faturasAfetadas: afetadas.map((fatura) => ({
           mes: fatura.referenceMonth.trim(),
           faturaId: fatura.id,
@@ -482,6 +664,8 @@ async function inserirLancamento(
       responsavelPessoaId: string | null;
       parcelaNumero?: number | null;
       parcelaTotal?: number | null;
+      ocorrencia?: number;
+      categoriaId?: string | null;
     };
     importacaoId: string;
     projetada: boolean;
@@ -496,7 +680,10 @@ async function inserirLancamento(
     valor: dados.linha.valor,
     parcelaNumero: dados.linha.parcelaNumero ?? null,
     parcelaTotal: dados.linha.parcelaTotal ?? null,
-    ocorrencia: 0,
+    // A ocorrência vem da linha, e não fixa em 0: dois cafés de R$ 12 no mesmo dia são duas
+    // despesas reais, e com a chave igual o `skipDuplicates` descartava o segundo em
+    // silêncio — a pessoa perdia uma despesa e só descobriria conferindo o total.
+    ocorrencia: dados.linha.ocorrencia ?? 0,
   });
 
   const { count } = await tx.invoiceEntry.createMany({
@@ -513,6 +700,7 @@ async function inserirLancamento(
         dedupeHash,
         // "Meu" não gera repasse; o resto vira um a receber daquela pessoa.
         forwardedToPersonId: dados.linha.responsavelPessoaId,
+        categoryId: dados.linha.categoriaId ?? null,
         importBatchId: dados.importacaoId,
       },
     ],
@@ -550,6 +738,139 @@ export async function listarImportacoes(prisma: PrismaClient, cartaoId: string, 
       createdAt: true,
     },
   });
+}
+
+/**
+ * Desfaz uma importação.
+ *
+ * Apaga **exatamente o que aquela importação criou** — os lançamentos, as parcelas que ela
+ * projetou, os parcelamentos que nasceram nela e os pagamentos que ela registrou —, e
+ * recalcula as faturas afetadas. Uma importação posterior que tenha acrescentado linhas à
+ * mesma fatura continua intacta: quem errou o arquivo de agosto não deveria perder o de
+ * setembro junto.
+ *
+ * Não é `deleteMany` na fatura inteira nem exclusão de fatura em cascata pelo mesmo motivo.
+ */
+export async function excluirImportacao(
+  prisma: PrismaClient,
+  cartaoId: string,
+  donoId: string,
+  importacaoId: string,
+) {
+  await carregarCartaoDoDono(prisma, cartaoId, donoId);
+
+  const importacao = await prisma.importBatch.findFirst({
+    where: { id: importacaoId, cardId: cartaoId },
+    select: { id: true },
+  });
+
+  if (!importacao) throw new ErroNaoEncontrado('Importação não encontrada');
+
+  const lancamentos = await prisma.invoiceEntry.findMany({
+    where: { importBatchId: importacaoId },
+    select: { id: true, invoiceId: true, installmentId: true },
+  });
+
+  // Dinheiro que trocou de mãos não se desfaz por aqui. Se alguém já pagou o repasse de um
+  // gasto desta importação, apagar o título sumiria com o registro desse pagamento — e a
+  // pessoa que pagou ficaria sem prova nenhuma. Cancelar o repasse à mão é o caminho.
+  const repassesPagos = await prisma.obligation.count({
+    where: {
+      originType: 'CARD_ENTRY',
+      originId: { in: lancamentos.map((lancamento) => lancamento.id) },
+      payments: { some: {} },
+    },
+  });
+
+  if (repassesPagos > 0) {
+    throw new ErroDeRegra(
+      'Esta importação tem repasse com pagamento registrado. Estorne o pagamento antes de excluí-la.',
+    );
+  }
+
+  const faturasAfetadas = [...new Set(lancamentos.map((lancamento) => lancamento.invoiceId))];
+
+  return prisma.$transaction(
+    async (tx) => {
+      // Os repasses primeiro: eles apontam para os lançamentos por `originId`, que não é
+      // chave estrangeira, então nada os apagaria em cascata.
+      const { count: repasses } = await tx.obligation.deleteMany({
+        where: {
+          originType: 'CARD_ENTRY',
+          originId: { in: lancamentos.map((lancamento) => lancamento.id) },
+        },
+      });
+
+      const { count: pagamentos } = await tx.payment.deleteMany({
+        where: { importBatchId: importacaoId },
+      });
+
+      const { count: removidos } = await tx.invoiceEntry.deleteMany({
+        where: { importBatchId: importacaoId },
+      });
+
+      // Parcelamento sem nenhuma parcela ficou órfão: ele só existe para agrupar as
+      // parcelas, e sozinho apareceria na tela de parcelamentos como uma compra fantasma.
+      const parcelamentos = [
+        ...new Set(lancamentos.map((lancamento) => lancamento.installmentId).filter(Boolean)),
+      ] as string[];
+
+      let parcelamentosRemovidos = 0;
+
+      for (const parcelamentoId of parcelamentos) {
+        const restantes = await tx.invoiceEntry.count({ where: { installmentId: parcelamentoId } });
+
+        if (restantes > 0) continue;
+
+        await tx.installment.delete({ where: { id: parcelamentoId } });
+        parcelamentosRemovidos += 1;
+      }
+
+      // Todas as faturas do cartão, e não só as que perderam lançamento: a fatura que teve
+      // o pagamento removido não perdeu linha nenhuma e mesmo assim deixou de estar
+      // quitada. São poucas por cartão, e errar para menos aqui deixaria uma fatura
+      // marcada como paga sem pagamento.
+      const todasAsFaturas = await tx.invoice.findMany({
+        where: { cardId: cartaoId },
+        select: { id: true },
+      });
+
+      let faturasRemovidas = 0;
+
+      for (const fatura of todasAsFaturas) {
+        await sincronizarFatura(tx, fatura.id);
+      }
+
+      // Fatura que ficou sem nada é resto da importação desfeita, não histórico. Só sai se
+      // também não tiver pagamento: um pagamento sem lançamento ainda é dinheiro pago.
+      for (const faturaId of faturasAfetadas) {
+        const [lancamentosRestantes, obrigacao] = await Promise.all([
+          tx.invoiceEntry.count({ where: { invoiceId: faturaId } }),
+          tx.obligation.findFirst({
+            where: { originType: 'INVOICE', originId: faturaId },
+            select: { id: true, _count: { select: { payments: true } } },
+          }),
+        ]);
+
+        if (lancamentosRestantes > 0 || (obrigacao?._count.payments ?? 0) > 0) continue;
+
+        if (obrigacao) await tx.obligation.delete({ where: { id: obrigacao.id } });
+        await tx.invoice.delete({ where: { id: faturaId } });
+        faturasRemovidas += 1;
+      }
+
+      await tx.importBatch.delete({ where: { id: importacaoId } });
+
+      return {
+        lancamentosRemovidos: removidos,
+        pagamentosRemovidos: pagamentos,
+        repassesRemovidos: repasses,
+        parcelamentosRemovidos,
+        faturasRemovidas,
+      };
+    },
+    { timeout: 30_000 },
+  );
 }
 
 /** Quanto ainda falta de um parcelamento, em reais. */

@@ -18,6 +18,14 @@ function lancar(payload: Record<string, unknown>) {
   return app.inject({ method: 'POST', url: '/lancamentos', headers: { cookie }, payload });
 }
 
+function listar(direcao: string, extra = '') {
+  return app.inject({
+    method: 'GET',
+    url: `/lancamentos?direcao=${direcao}${extra}`,
+    headers: { cookie },
+  });
+}
+
 const SALARIO = {
   direcao: 'RECEIVABLE',
   descricao: 'Salário',
@@ -149,17 +157,61 @@ describe('baixa', () => {
     expect(resposta.json().dataDaBaixa).toBeNull();
   });
 
-  it('recusa pagar mais do que falta', async () => {
+  it('aceita pagar mais que o título: são juros ou multa', async () => {
     const criado = await lancar(ALUGUEL);
 
     const resposta = await app.inject({
       method: 'POST',
       url: `/lancamentos/${criado.json().id}/baixa`,
       headers: { cookie },
-      payload: { dataDaBaixa: '2026-08-08', valorPago: '5000.00' },
+      payload: { dataDaBaixa: '2026-08-08', valorPago: '1900.00' },
     });
 
-    expect(resposta.statusCode).toBe(422);
+    // Quem paga atrasado paga mais, e recusar obrigava a mentir o valor para dar a baixa.
+    expect(resposta.json().status).toBe('SETTLED');
+    expect(resposta.json().restante).toBe('0.00');
+
+    // O valor que saiu do banco é o cheio; só o liquidado fica preso ao devido, que é o
+    // que o CHECK do banco exige.
+    const pagamento = await app.prisma.payment.findFirstOrThrow();
+    expect(pagamento.amount.toString()).toBe('1900');
+    expect(pagamento.adjustment).toBe(false);
+  });
+
+  it('quita com desconto quando a pessoa diz que foi desconto', async () => {
+    const criado = await lancar(ALUGUEL);
+
+    const resposta = await app.inject({
+      method: 'POST',
+      url: `/lancamentos/${criado.json().id}/baixa`,
+      headers: { cookie },
+      payload: { dataDaBaixa: '2026-08-08', valorPago: '1700.00', quitar: true },
+    });
+
+    expect(resposta.json().status).toBe('SETTLED');
+
+    // Duas linhas, e não um título de valor menor: mexer no valor apagaria quanto a dívida
+    // era de verdade, e o histórico deixaria de explicar a diferença.
+    const pagamentos = await app.prisma.payment.findMany({ orderBy: { adjustment: 'asc' } });
+    expect(pagamentos).toHaveLength(2);
+    expect(pagamentos[0]!.amount.toString()).toBe('1700');
+    expect(pagamentos[1]!.amount.toString()).toBe('100');
+    expect(pagamentos[1]!.adjustment).toBe(true);
+  });
+
+  it('sem dizer que é desconto, pagar a menor continua sendo parcial', async () => {
+    const criado = await lancar(ALUGUEL);
+
+    const resposta = await app.inject({
+      method: 'POST',
+      url: `/lancamentos/${criado.json().id}/baixa`,
+      headers: { cookie },
+      payload: { dataDaBaixa: '2026-08-08', valorPago: '1700.00' },
+    });
+
+    // As duas coisas são diferentes, e só quem deu a baixa sabe qual foi.
+    expect(resposta.json().status).toBe('PARTIAL');
+    expect(await app.prisma.payment.count()).toBe(1);
   });
 
   it('estorna a baixa e devolve o lançamento ao previsto', async () => {
@@ -387,5 +439,272 @@ describe('orçamento do mês', () => {
     expect((await app.inject({ method: 'GET', url: '/orcamento?mes=2026-08' })).statusCode).toBe(
       401,
     );
+  });
+});
+
+/**
+ * A dívida entre duas contas do sistema: quem deve declara o pagamento, quem recebe
+ * confirma. É o único ponto do sistema em que uma baixa não vale sozinha.
+ */
+describe('pagamento pendente de confirmação', () => {
+  let cookieDoBruno: string;
+  let dividaId: string;
+
+  beforeEach(async () => {
+    const { usuario: bruno } = await criarUsuario(app, {
+      email: 'bruno@exemplo.com',
+      nome: 'Bruno',
+    });
+    cookieDoBruno = await logar(app, 'bruno@exemplo.com');
+
+    // A ficha do Bruno na agenda da Ana, ligada à conta dele: é o vínculo que faz o Bruno
+    // enxergar, na conta dele, a dívida que a Ana lançou no nome dele.
+    const ficha = await app.prisma.person.create({
+      data: {
+        name: 'Bruno',
+        ownerId: (await app.prisma.user.findFirstOrThrow({ where: { email: 'ana@exemplo.com' } }))
+          .id,
+        userId: bruno.id,
+      },
+    });
+
+    const divida = await lancar({
+      direcao: 'RECEIVABLE',
+      descricao: 'Churrasco',
+      valor: '100.00',
+      vencimento: '2026-08-20',
+      formaDePagamento: 'CASH',
+      pessoaId: ficha.id,
+    });
+
+    dividaId = divida.json().id;
+  });
+
+  const baixar = (cookieDeQuem: string) =>
+    app.inject({
+      method: 'POST',
+      url: `/lancamentos/${dividaId}/baixa`,
+      headers: { cookie: cookieDeQuem },
+      payload: { dataDaBaixa: '2026-08-18' },
+    });
+
+  const verComoBruno = async () =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: '/lancamentos?direcao=PAYABLE&situacao=TODAS',
+        headers: { cookie: cookieDoBruno },
+      })
+    ).json()[0];
+
+  const verComoAna = async () =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: '/lancamentos?direcao=RECEIVABLE&situacao=TODAS',
+        headers: { cookie },
+      })
+    ).json()[0];
+
+  it('nasce pendente quando quem deve é que dá a baixa', async () => {
+    const resposta = await baixar(cookieDoBruno);
+
+    expect(resposta.json().pagamentos[0].confirmado).toBe(false);
+  });
+
+  it('não abate a dívida enquanto não é confirmado', async () => {
+    await baixar(cookieDoBruno);
+
+    // O ponto todo: se abatesse, o Bruno quitaria a própria dívida sozinho e o título
+    // sumiria da lista de a receber da Ana sem nada ter entrado.
+    const comoAna = await verComoAna();
+    expect(comoAna.status).toBe('OPEN');
+    expect(comoAna.restante).toBe('100.00');
+    expect(comoAna.valorLiquidado).toBe('0');
+  });
+
+  it('aparece para os dois lados, e só quem recebe pode confirmar', async () => {
+    await baixar(cookieDoBruno);
+
+    expect((await verComoBruno()).pagamentos).toHaveLength(1);
+    expect((await verComoBruno()).podeConfirmarPagamentos).toBe(false);
+    expect((await verComoAna()).podeConfirmarPagamentos).toBe(true);
+  });
+
+  it('abate a dívida ao ser confirmado por quem recebe', async () => {
+    const pagamentoId = (await baixar(cookieDoBruno)).json().pagamentos[0].id;
+
+    const resposta = await app.inject({
+      method: 'POST',
+      url: `/lancamentos/${dividaId}/pagamentos/${pagamentoId}/confirmar`,
+      headers: { cookie },
+    });
+
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toMatchObject({ status: 'SETTLED', restante: '0.00' });
+    expect(resposta.json().pagamentos[0].confirmado).toBe(true);
+  });
+
+  it('recusa a confirmação vinda de quem deve', async () => {
+    const pagamentoId = (await baixar(cookieDoBruno)).json().pagamentos[0].id;
+
+    const resposta = await app.inject({
+      method: 'POST',
+      url: `/lancamentos/${dividaId}/pagamentos/${pagamentoId}/confirmar`,
+      headers: { cookie: cookieDoBruno },
+    });
+
+    // Deixar o devedor confirmar devolveria o problema ao ponto de partida: seria uma
+    // baixa de duas etapas feita pela mesma pessoa.
+    expect(resposta.statusCode).toBe(422);
+    expect((await verComoAna()).status).toBe('OPEN');
+  });
+
+  it('já nasce confirmado quando quem recebe é que dá a baixa', async () => {
+    const resposta = await baixar(cookie);
+
+    expect(resposta.json().pagamentos[0].confirmado).toBe(true);
+    expect(resposta.json().status).toBe('SETTLED');
+  });
+
+  it('impede o devedor de declarar o valor cheio duas vezes', async () => {
+    await baixar(cookieDoBruno);
+
+    // O teto é o que já foi declarado, e não só o confirmado: sem isso o Bruno encheria
+    // a lista de declarações enquanto a Ana não olha.
+    const segunda = await baixar(cookieDoBruno);
+
+    expect(segunda.statusCode).toBe(422);
+  });
+
+  it('deixa quem recebe recusar, estornando o que não reconhece', async () => {
+    await baixar(cookieDoBruno);
+
+    const resposta = await app.inject({
+      method: 'DELETE',
+      url: `/lancamentos/${dividaId}/baixa`,
+      headers: { cookie },
+    });
+
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json().pagamentos).toHaveLength(0);
+  });
+});
+
+describe('filtro por origem e forma de pagamento', () => {
+  it('separa o que veio da fatura do resto', async () => {
+    await lancar(ALUGUEL);
+
+    const cartao = await app.inject({
+      method: 'POST',
+      url: '/cartoes',
+      headers: { cookie },
+      payload: { nome: 'Nubank', diaDeFechamento: 25, diaDeVencimento: 5 },
+    });
+
+    const fatura = await app.inject({
+      method: 'GET',
+      url: `/cartoes/${cartao.json().id}/faturas?mes=2026-08`,
+      headers: { cookie },
+    });
+
+    const todos = await listar('PAYABLE', '&mes=2026-08&situacao=TODAS');
+    const soFaturas = await listar('PAYABLE', '&mes=2026-08&situacao=TODAS&origem=INVOICE');
+
+    // Sem o filtro, "faturas de cartão R$ X" no dashboard levaria à lista inteira, e o
+    // total da tela de destino não bateria com o do card que a pessoa tocou.
+    expect(fatura.statusCode).toBe(200);
+    expect(todos.json().length).toBeGreaterThan(soFaturas.json().length);
+    expect(soFaturas.json().every((item: { origem: string }) => item.origem === 'INVOICE')).toBe(
+      true,
+    );
+  });
+
+  it('aceita uma forma de pagamento ou várias', async () => {
+    await lancar(ALUGUEL);
+    await lancar({
+      ...ALUGUEL,
+      descricao: 'Almoço',
+      valor: '40.00',
+      formaDePagamento: 'MEAL_VOUCHER',
+    });
+    await lancar({ ...ALUGUEL, descricao: 'Troca', valor: '10.00', formaDePagamento: 'BARTER' });
+
+    const uma = await listar('PAYABLE', '&mes=2026-08&situacao=TODAS&formaDePagamento=CASH');
+    const duas = await listar(
+      'PAYABLE',
+      '&mes=2026-08&situacao=TODAS&formaDePagamento=CASH&formaDePagamento=MEAL_VOUCHER',
+    );
+
+    // Uma querystring com um valor só chega como string, e com dois como lista. Exigir a
+    // lista faria o link de um filtro só ser recusado.
+    expect(uma.json()).toHaveLength(1);
+    expect(duas.json()).toHaveLength(2);
+  });
+
+  it('recusa origem que não existe', async () => {
+    expect((await listar('PAYABLE', '&origem=INVENTADA')).statusCode).toBe(400);
+  });
+});
+
+describe('dashboard', () => {
+  function verDashboard(mes = '2026-08') {
+    return app.inject({ method: 'GET', url: `/dashboard?mes=${mes}`, headers: { cookie } });
+  }
+
+  it('reúne os dois saldos do mês', async () => {
+    await lancar(SALARIO);
+    const conta = await lancar(ALUGUEL);
+
+    await app.inject({
+      method: 'POST',
+      url: `/lancamentos/${conta.json().id}/baixa`,
+      headers: { cookie },
+      payload: { dataDaBaixa: '2026-08-11' },
+    });
+
+    const corpo = (await verDashboard()).json();
+
+    // Previsto é tudo que vence no mês; realizado, só o que se moveu.
+    expect(corpo.saldoPrevisto).toMatchObject({ entradas: '5000.00', saidas: '1800.00' });
+    expect(corpo.saldoRealizado).toMatchObject({ entradas: '0.00', saidas: '1800.00' });
+  });
+
+  it('parte o a pagar entre caixa e cartão, sem repetir lançamento', async () => {
+    await lancar(ALUGUEL);
+    await lancar({
+      ...ALUGUEL,
+      descricao: 'Streaming',
+      valor: '40.00',
+      formaDePagamento: 'CREDIT_CARD',
+    });
+
+    const corpo = (await verDashboard()).json();
+    const [caixa, cartao] = corpo.aPagar.blocos;
+
+    // Os blocos particionam a lista: somados, dão o total da seção. Um terceiro bloco por
+    // origem cruzaria o eixo e mostraria o mesmo lançamento duas vezes.
+    expect(caixa.total).toBe('1800.00');
+    expect(cartao.total).toBe('40.00');
+    expect(corpo.aPagar.total).toBe('1840.00');
+  });
+
+  it('leva o filtro que abre a lista de cada bloco', async () => {
+    await lancar(ALUGUEL);
+
+    const corpo = (await verDashboard()).json();
+
+    // O filtro nasce ao lado do número que ele promete; numa tabela de rotas noutro
+    // arquivo, ele deixaria de bater no dia em que o recorte mudasse.
+    expect(corpo.aPagar.blocos.map((b: { filtro: string }) => b.filtro)).toEqual([
+      'caixa',
+      'cartao',
+    ]);
+  });
+
+  it('conta o que venceu sem baixa', async () => {
+    await lancar(ALUGUEL);
+
+    expect((await verDashboard()).json().atrasados).toBe(1);
   });
 });

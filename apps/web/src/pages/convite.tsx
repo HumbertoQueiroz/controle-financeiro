@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { AceiteDeTermos } from '@/components/aceite-de-termos';
 import { Button } from '@/components/ui/button';
 import { Campo, Input } from '@/components/ui/campo';
+import { CampoDeSenha } from '@/components/ui/campo-de-senha';
 import { Cartao } from '@/components/ui/cartao';
 import { Carregando, Erro } from '@/components/ui/estados';
 
@@ -106,21 +107,14 @@ export function Convite() {
                   {(id) => <Input id={id} name="nome" autoComplete="name" required autoFocus />}
                 </Campo>
 
-                <Campo
+                <CampoDeSenha
                   rotulo={convite.data.jaTemConta ? 'Sua senha' : 'Crie uma senha'}
-                  auxilio={convite.data.jaTemConta ? undefined : 'Pelo menos 8 caracteres'}
-                >
-                  {(id) => (
-                    <Input
-                      id={id}
-                      name="senha"
-                      type="password"
-                      autoComplete={convite.data.jaTemConta ? 'current-password' : 'new-password'}
-                      minLength={8}
-                      required
-                    />
-                  )}
-                </Campo>
+                  name="senha"
+                  // Quem já tem conta está se autenticando, não criando senha: cobrar a
+                  // régua aqui exigiria trocar a senha para aceitar um convite.
+                  exigirForca={!convite.data.jaTemConta}
+                  required
+                />
 
                 <AceiteDeTermos />
 

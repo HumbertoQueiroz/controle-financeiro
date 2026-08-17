@@ -22,7 +22,7 @@ async function compartilhar(app: App, cookie: string, payload: Record<string, un
 
 const dadosDeCadastro = {
   nome: 'Bruno',
-  senha: 'senha-de-teste-123',
+  senha: 'Senha-De-Teste-123',
   aceitaTermos: true,
   aceitaPrivacidade: true,
 };
@@ -100,8 +100,23 @@ describe('convite para quem não tem conta', () => {
     const corpo = resposta.json();
     expect(corpo.status).toBe('INVITE_CREATED');
     expect(corpo.urlDoConvite).toContain('/convite/');
-    expect(corpo.urlDoWhatsApp).toContain('wa.me/11988887777');
+    // Com o código do país: `wa.me/11988887777` não abre a conversa, ou abre a conversa
+    // de outra pessoa em outro país. O banco guarda o número nacional; o 55 entra no link.
+    expect(corpo.urlDoWhatsApp).toContain('wa.me/5511988887777');
     expect(decodeURIComponent(corpo.urlDoWhatsApp)).toContain('Ana compartilhou');
+  });
+
+  it('não duplica o código do país num telefone que já o tenha', async () => {
+    await criarUsuario(app, { email: 'ana@exemplo.com', nome: 'Ana' });
+    const cookie = await logar(app, 'ana@exemplo.com');
+
+    const resposta = await compartilhar(app, cookie, {
+      email: 'novo@exemplo.com',
+      escopo: 'BOTH',
+      telefone: '+55 11 98888-7777',
+    });
+
+    expect(resposta.json().urlDoWhatsApp).toContain('wa.me/5511988887777');
   });
 
   it('guarda apenas o hash do token', async () => {
@@ -221,6 +236,34 @@ describe('aceite do convite', () => {
     const grant = await app.prisma.reportGrant.findFirstOrThrow({ where: { ownerId: ana.id } });
     expect(grant.scope).toBe('PAYABLE');
     expect(grant.revokedAt).toBeNull();
+  });
+
+  it('põe quem convidou na agenda de quem aceitou', async () => {
+    const { usuario: ana } = await criarUsuario(app, { email: 'ana@exemplo.com', nome: 'Ana' });
+    const cookie = await logar(app, 'ana@exemplo.com');
+    const criado = await compartilhar(app, cookie, {
+      email: 'bruno@exemplo.com',
+      escopo: 'BOTH',
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: `/convite/${tokenDaUrl(criado.json().urlDoConvite)}/aceitar`,
+      payload: dadosDeCadastro,
+    });
+
+    const bruno = await app.prisma.user.findUniqueOrThrow({
+      where: { email: 'bruno@exemplo.com' },
+    });
+
+    const ficha = await app.prisma.person.findFirstOrThrow({
+      where: { ownerId: bruno.id, userId: ana.id },
+    });
+
+    // Com `userId` preenchido, e não uma ficha solta: é a ligação com a conta real que faz
+    // o fechamento entre os dois enxergar as duas pontas da mesma dívida. Cadastrada à mão
+    // depois, ela nasceria sem essa ligação.
+    expect(ficha.name).toBe('Ana');
   });
 
   it('usa o e-mail do convite e ignora qualquer outro enviado no formulário', async () => {

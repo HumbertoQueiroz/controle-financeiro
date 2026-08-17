@@ -24,6 +24,18 @@ O link do WhatsApp já vem montado com a mensagem. Sem telefone, `wa.me` abre o 
 pessoa escolher o contato — que é o caso comum, porque o dono costuma saber quem é sem ter
 o número digitado no sistema.
 
+### O número, e onde o código do país entra
+
+O banco guarda **onze dígitos**: DDD e o número, sem o `55`. O `telefoneSchema` exige
+exatamente isso, e descarta o código do país quando ele vem colado da agenda do celular —
+guardar as duas formas faria dois registros do mesmo contato gerarem links diferentes, um
+deles quebrado, e ninguém descobriria isso até o convite não chegar.
+
+O `55` entra só na montagem do link, em `urlDoWhatsApp`: o `wa.me` exige formato
+internacional, e `wa.me/65996452787` não abre a conversa — ou abre a de outra pessoa em
+outro país. A função tolera um registro antigo que já traga o `55`, para não produzir
+`5555…` justamente nos contatos mais antigos.
+
 Quem entrega o link é o dono, pelo canal que ele já usa. Disparar mensagem para terceiros
 como efeito colateral de uma busca seria ruim justamente quando alguém digitasse o endereço
 errado.

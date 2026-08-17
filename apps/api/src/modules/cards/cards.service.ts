@@ -1,7 +1,13 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { AtualizarCartao, CriarCartao } from '@controle/shared';
 import { ErroDeRegra, ErroNaoEncontrado } from '../../lib/erros.js';
-import { carregarCartaoDoDono, sincronizarFatura, sincronizarRepasse } from './faturas.service.js';
+import {
+  calcularFechamento,
+  calcularVencimento,
+  carregarCartaoDoDono,
+  sincronizarFatura,
+  sincronizarRepasse,
+} from './faturas.service.js';
 
 interface CartaoDoBanco {
   id: string;
@@ -58,22 +64,67 @@ export async function atualizar(
   donoId: string,
   dados: AtualizarCartao,
 ) {
-  await carregarCartaoDoDono(prisma, cartaoId, donoId);
+  const anterior = await carregarCartaoDoDono(prisma, cartaoId, donoId);
 
-  const cartao = await prisma.creditCard.update({
-    where: { id: cartaoId },
-    data: {
-      ...(dados.nome !== undefined && { name: dados.nome }),
-      ...(dados.bandeira !== undefined && { brand: dados.bandeira || null }),
-      ...(dados.finalDoCartao !== undefined && { lastFour: dados.finalDoCartao || null }),
-      ...(dados.diaDeFechamento !== undefined && { closingDay: dados.diaDeFechamento }),
-      ...(dados.diaDeVencimento !== undefined && { dueDay: dados.diaDeVencimento }),
-      ...(dados.ativo !== undefined && { active: dados.ativo }),
-      ...(dados.compartilhado !== undefined && { shared: dados.compartilhado }),
-    },
+  const cartao = await prisma.$transaction(async (tx) => {
+    const atualizado = await tx.creditCard.update({
+      where: { id: cartaoId },
+      data: {
+        ...(dados.nome !== undefined && { name: dados.nome }),
+        ...(dados.bandeira !== undefined && { brand: dados.bandeira || null }),
+        ...(dados.finalDoCartao !== undefined && { lastFour: dados.finalDoCartao || null }),
+        ...(dados.diaDeFechamento !== undefined && { closingDay: dados.diaDeFechamento }),
+        ...(dados.diaDeVencimento !== undefined && { dueDay: dados.diaDeVencimento }),
+        ...(dados.ativo !== undefined && { active: dados.ativo }),
+        ...(dados.compartilhado !== undefined && { shared: dados.compartilhado }),
+      },
+    });
+
+    const mudouOsDias =
+      atualizado.closingDay !== anterior.closingDay || atualizado.dueDay !== anterior.dueDay;
+
+    if (mudouOsDias) {
+      await recalcularDatasDasFaturasAbertas(tx, atualizado);
+    }
+
+    return atualizado;
   });
 
   return paraSaida(cartao);
+}
+
+/**
+ * Reaplica os dias do cartão às faturas que ainda estão abertas.
+ *
+ * A fatura guarda as datas calculadas na criação, e não uma referência ao cartão. Sem este
+ * passo, corrigir o dia de vencimento não mudaria nada na tela — a pessoa veria o cartão
+ * dizendo "vence dia 10" e a fatura do mês dizendo dia 15, e concluiria, com razão, que a
+ * edição não funciona.
+ *
+ * Fatura fechada ou paga fica como está: a data dela é o que de fato aconteceu, e reescrever
+ * o passado para combinar com uma configuração de hoje seria falsificar o histórico. A
+ * obrigação da fatura é sincronizada junto, porque o vencimento dela sai daqui.
+ */
+async function recalcularDatasDasFaturasAbertas(
+  tx: Prisma.TransactionClient,
+  cartao: { id: string; closingDay: number; dueDay: number },
+) {
+  const abertas = await tx.invoice.findMany({
+    where: { cardId: cartao.id, status: 'OPEN' },
+    select: { id: true, referenceMonth: true },
+  });
+
+  for (const fatura of abertas) {
+    await tx.invoice.update({
+      where: { id: fatura.id },
+      data: {
+        closingDate: calcularFechamento(fatura.referenceMonth, cartao.closingDay),
+        dueDate: calcularVencimento(fatura.referenceMonth, cartao.dueDay),
+      },
+    });
+
+    await sincronizarFatura(tx, fatura.id);
+  }
 }
 
 export async function listarFaturas(prisma: PrismaClient, cartaoId: string, donoId: string) {

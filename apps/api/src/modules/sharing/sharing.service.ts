@@ -1,4 +1,4 @@
-import type { GrantScope, PrismaClient } from '@prisma/client';
+import type { GrantScope, Prisma, PrismaClient } from '@prisma/client';
 import type { AceitarConvite, Compartilhar, ResultadoDoCompartilhamento } from '@controle/shared';
 import { normalizarEmail } from '../../lib/email.js';
 import { hashPassword } from '../../lib/hash.js';
@@ -254,6 +254,47 @@ export interface ConviteAceito {
  * É isso que entrega "a permissão já embutida no convite" — o convidado nunca vive um
  * instante cadastrado-mas-sem-acesso, e o dono não precisa voltar para conceder de novo.
  */
+/**
+ * Põe quem convidou na agenda de quem aceitou.
+ *
+ * O convite já é a relação: alguém compartilhou as próprias contas com esta pessoa, e a
+ * primeira coisa que ela vai querer fazer é lançar algo com essa mesma pessoa. Sem isto, a
+ * agenda do convidado nasce vazia e ele precisa cadastrar à mão alguém que o sistema já
+ * conhece — e o cadastro à mão nasce **sem** `userId`, isto é, sem ligação com a conta real.
+ *
+ * A ficha aponta para a conta de quem convidou (`userId`), e é isso que faz o fechamento
+ * entre os dois enxergar as duas pontas da mesma dívida.
+ */
+async function registrarQuemConvidou(
+  tx: Prisma.TransactionClient,
+  quemConvidouId: string,
+  convidadoId: string,
+) {
+  const jaExiste = await tx.person.findFirst({
+    where: { ownerId: convidadoId, userId: quemConvidouId },
+    select: { id: true },
+  });
+
+  // Reaceitar um convite, ou aceitar um segundo do mesmo dono, não pode duplicar a ficha.
+  if (jaExiste) return;
+
+  const quemConvidou = await tx.user.findUnique({
+    where: { id: quemConvidouId },
+    select: { name: true, email: true },
+  });
+
+  if (!quemConvidou) return;
+
+  await tx.person.create({
+    data: {
+      name: quemConvidou.name,
+      email: quemConvidou.email,
+      ownerId: convidadoId,
+      userId: quemConvidouId,
+    },
+  });
+}
+
 export async function aceitarConvite(
   prisma: PrismaClient,
   token: string,
@@ -332,6 +373,8 @@ export async function aceitarConvite(
       create: { ownerId: convite.ownerId, granteeUserId: usuarioId, scope: convite.scope },
       update: { scope: convite.scope, revokedAt: null, expiresAt: null },
     });
+
+    await registrarQuemConvidou(tx, convite.ownerId, usuarioId);
 
     return { usuarioId, papel, escopo: convite.scope };
   });

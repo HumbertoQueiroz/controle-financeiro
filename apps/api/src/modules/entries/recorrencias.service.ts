@@ -7,6 +7,9 @@ type Transacao = Prisma.TransactionClient;
 
 interface RecorrenciaDoBanco {
   id: string;
+  categoryId?: string | null;
+  category?: { name: string } | null;
+  _count?: { obligations: number };
   direction: 'RECEIVABLE' | 'PAYABLE';
   description: string;
   amount: Prisma.Decimal;
@@ -18,7 +21,7 @@ interface RecorrenciaDoBanco {
   active: boolean;
 }
 
-function paraSaida(recorrencia: RecorrenciaDoBanco) {
+function paraSaida(recorrencia: RecorrenciaDoBanco, hoje = new Date()) {
   return {
     id: recorrencia.id,
     direcao: recorrencia.direction,
@@ -30,7 +33,44 @@ function paraSaida(recorrencia: RecorrenciaDoBanco) {
     inicioEm: recorrencia.startsOn.trim(),
     fimEm: recorrencia.endsOn?.trim() ?? null,
     ativa: recorrencia.active,
+    categoriaId: recorrencia.categoryId ?? null,
+    categoria: recorrencia.category?.name ?? null,
+    parcelasGeradas: recorrencia._count?.obligations ?? 0,
+    // O próximo vencimento é o que responde "quando isso cai de novo", e é a informação
+    // que falta numa lista de recorrências sem ela: o dia do mês sozinho não diz se a
+    // vigência já acabou.
+    proximoVencimento: proximoVencimento(recorrencia, hoje),
   };
+}
+
+/** O vencimento seguinte dentro da vigência, ou nulo quando a recorrência já se esgotou. */
+function proximoVencimento(
+  recorrencia: { active: boolean; dayOfMonth: number; startsOn: string; endsOn: string | null },
+  hoje: Date,
+): Date | null {
+  if (!recorrencia.active) return null;
+
+  const mesDeHoje = `${hoje.getUTCFullYear()}-${String(hoje.getUTCMonth() + 1).padStart(2, '0')}`;
+  const inicio = recorrencia.startsOn.trim();
+  const fim = recorrencia.endsOn?.trim();
+  const candidato = inicio > mesDeHoje ? inicio : mesDeHoje;
+
+  if (fim && candidato > fim) return null;
+
+  const nesteMes = vencimentoNoMes(candidato, recorrencia.dayOfMonth);
+
+  // Passado o dia neste mês, o próximo é o do mês seguinte — desde que caiba na vigência.
+  if (candidato === mesDeHoje && nesteMes < hoje) {
+    const [ano, numero] = candidato.split('-').map(Number);
+    const seguinte = new Date(Date.UTC(ano!, numero!, 1));
+    const mesSeguinte = `${seguinte.getUTCFullYear()}-${String(seguinte.getUTCMonth() + 1).padStart(2, '0')}`;
+
+    if (fim && mesSeguinte > fim) return null;
+
+    return vencimentoNoMes(mesSeguinte, recorrencia.dayOfMonth);
+  }
+
+  return nesteMes;
 }
 
 /**
@@ -50,10 +90,11 @@ export function vencimentoNoMes(mes: string, diaDoVencimento: number): Date {
 export async function listar(prisma: PrismaClient, userId: string) {
   const recorrencias = await prisma.recurrence.findMany({
     where: { ownerUserId: userId },
+    include: { category: { select: { name: true } }, _count: { select: { obligations: true } } },
     orderBy: [{ active: 'desc' }, { description: 'asc' }],
   });
 
-  return recorrencias.map(paraSaida);
+  return recorrencias.map((recorrencia) => paraSaida(recorrencia));
 }
 
 export async function criar(prisma: PrismaClient, userId: string, dados: CriarRecorrencia) {
@@ -75,7 +116,9 @@ export async function criar(prisma: PrismaClient, userId: string, dados: CriarRe
       dayOfMonth: dados.diaDoVencimento,
       startsOn: dados.inicioEm,
       endsOn: dados.fimEm ?? null,
+      categoryId: dados.categoriaId ?? null,
     },
+    include: { category: { select: { name: true } }, _count: { select: { obligations: true } } },
   });
 
   return paraSaida(recorrencia);
@@ -110,7 +153,9 @@ export async function atualizar(
       ...(dados.contraparte !== undefined && { counterpartyLabel: dados.contraparte || null }),
       ...(dados.fimEm !== undefined && { endsOn: dados.fimEm || null }),
       ...(dados.ativa !== undefined && { active: dados.ativa }),
+      ...(dados.categoriaId !== undefined && { categoryId: dados.categoriaId || null }),
     },
+    include: { category: { select: { name: true } }, _count: { select: { obligations: true } } },
   });
 
   return paraSaida(recorrencia);
@@ -180,6 +225,7 @@ export async function gerarParcelasDoMes(
       dayOfMonth: true,
       startsOn: true,
       endsOn: true,
+      categoryId: true,
     },
   });
 
@@ -200,6 +246,8 @@ export async function gerarParcelasDoMes(
       originType: 'RECURRENCE' as const,
       recurrenceId: recorrencia.id,
       referenceMonth: mes,
+      // A parcela herda a categoria do molde: classificar o salário uma vez basta.
+      categoryId: recorrencia.categoryId,
     })),
     skipDuplicates: true,
   });

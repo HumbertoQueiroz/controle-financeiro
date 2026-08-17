@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
+import { requisitosDaSenha } from '@controle/shared';
 import { hashPassword } from '../src/lib/hash.js';
 import { normalizarEmail } from '../src/lib/email.js';
 import { VERSAO_PRIVACIDADE, VERSAO_TERMOS } from '../src/lib/legal.js';
@@ -9,11 +10,17 @@ const prisma = new PrismaClient();
 
 /**
  * Senha aleatória legível, para quando ADMIN_PASSWORD não vem do ambiente.
+ *
  * base64url evita caracteres que se perdem ao copiar de um terminal ou que precisam de
- * escape em linha de comando.
+ * escape em linha de comando — mas ele não garante maiúscula, minúscula nem dígito, e um
+ * sorteio pode sair sem algum deles. O sufixo fixo faz a senha gerada satisfazer a mesma
+ * régua exigida das pessoas; sem ele, o seed criaria de vez em quando um admin com uma
+ * senha que o próprio sistema recusaria no cadastro.
+ *
+ * Os 18 bytes aleatórios continuam sendo toda a entropia: o sufixo é público e não conta.
  */
 function gerarSenha(): string {
-  return randomBytes(18).toString('base64url');
+  return `${randomBytes(18).toString('base64url')}aA1!`;
 }
 
 async function main() {
@@ -33,6 +40,18 @@ async function main() {
 
   const senha = senhaDoAmbiente && senhaDoAmbiente.length > 0 ? senhaDoAmbiente : gerarSenha();
   const senhaFoiGerada = senha !== senhaDoAmbiente;
+
+  // A conta com acesso a todos os dados de todo mundo é a última que pode ficar de fora da
+  // exigência. Recusar aqui, com a lista do que falta, é melhor que criar o admin e só
+  // descobrir a senha fraca quando alguém tentar trocá-la.
+  const pendencias = requisitosDaSenha(senha).filter((requisito) => !requisito.atendido);
+
+  if (pendencias.length > 0) {
+    console.error('ADMIN_PASSWORD não atende às exigências:');
+    for (const pendencia of pendencias) console.error(`  - ${pendencia.rotulo}`);
+    process.exitCode = 1;
+    return;
+  }
 
   await prisma.$transaction(async (tx) => {
     const admin = await tx.user.create({

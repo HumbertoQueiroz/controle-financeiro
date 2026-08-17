@@ -95,6 +95,17 @@ model User {
   /// Marcado quando a senha foi gerada pelo sistema (seed) e precisa ser trocada.
   mustChangePassword Boolean   @default(false)
   anonymizedAt       DateTime?
+
+  /// Próximo número de fechamento **deste** usuário.
+  ///
+  /// A numeração é por conta, e não global: "o fechamento nº 3" precisa ser um número que
+  /// a pessoa reconheça nos próprios papéis, e um contador compartilhado faria os números
+  /// dela saltarem conforme outros usuários fechassem contas.
+  ///
+  /// Incrementado com `increment` dentro da transação do fechamento — ler, somar e gravar
+  /// daria o mesmo número a dois fechamentos simultâneos.
+  nextSettlementNumber Int @default(1)
+
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -114,6 +125,11 @@ model User {
   groups           Group[]
   importBatches    ImportBatch[]
   recorrencias     Recurrence[]
+  categorias       Category[]
+  contas           BankAccount[]
+  fechamentos      ParticipantSettlement[]
+  agendasDeFechamento SettlementSchedule[]
+  avisosLidos         NoticeRead[]
 
   @@index([email])
 }
@@ -159,6 +175,8 @@ model Person {
   expenseShares         ExpenseShare[]
   transfersFrom         SettlementTransfer[] @relation("TransferenciaOrigem")
   transfersTo           SettlementTransfer[] @relation("TransferenciaDestino")
+  fechamentos           ParticipantSettlement[]
+  agendaDeFechamento    SettlementSchedule?
 
   @@index([ownerId])
   @@index([email])
@@ -281,12 +299,17 @@ model Obligation {
   recurrenceId   String?
   referenceMonth String? @db.Char(7)
 
+  /// Classificação do lançamento. Opcional: exigir categoria travaria o lançamento
+  /// rápido, e um lançamento não feito é pior que um sem categoria.
+  categoryId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   debtor     Person?     @relation("Devedor", fields: [debtorId], references: [id], onDelete: Cascade)
   creditor   Person?     @relation("Credor", fields: [creditorId], references: [id], onDelete: Cascade)
   recurrence Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   payments   Payment[]
 
   @@unique([recurrenceId, referenceMonth])
@@ -295,6 +318,7 @@ model Obligation {
   @@index([originType, originId])
   @@index([dueDate])
   @@index([settledAt])
+  @@index([categoryId, dueDate])
 }
 
 /// De que lado do caixa o lançamento está.
@@ -324,6 +348,8 @@ model Recurrence {
 
   /// Dia do vencimento. Meses curtos usam o último dia disponível.
   dayOfMonth Int
+  /// Categoria herdada pelas parcelas geradas.
+  categoryId String?
   /// Vigência em YYYY-MM. Sem `endsOn`, a recorrência não tem prazo.
   startsOn   String  @db.Char(7)
   endsOn     String? @db.Char(7)
@@ -334,6 +360,7 @@ model Recurrence {
 
   owner       User         @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   person      Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   obligations Obligation[]
 
   @@index([ownerUserId, active])
@@ -445,6 +472,32 @@ model Payment {
   paidAt       DateTime
   note         String?
 
+  /// Falso enquanto o pagamento aguarda a palavra de quem recebe.
+  ///
+  /// Numa dívida entre duas pessoas, quem deve pode registrar que pagou, mas quem recebe é
+  /// quem sabe se o dinheiro chegou. Até a confirmação o pagamento existe e aparece para os
+  /// dois lados, e **não** entra na soma que abate a dívida — deixar entrar permitiria
+  /// quitar a dívida de si mesmo declarando um pagamento que ninguém viu.
+  ///
+  /// O padrão é `true` porque o caso comum é quem recebe dando a baixa, e porque todo
+  /// pagamento que já existia foi registrado por alguém com autoridade para isso.
+  confirmed Boolean @default(true)
+
+  /// Verdadeiro quando a linha é **acerto**, e não dinheiro: o desconto que fecha um
+  /// título pago a menor.
+  ///
+  /// Ela abate a dívida como qualquer pagamento — é isso que faz o título quitar —, mas
+  /// fica de fora do saldo da conta bancária, porque nada saiu do banco. Sem a distinção,
+  /// conceder um desconto tiraria dinheiro do saldo do mesmo jeito que pagá-lo.
+  ///
+  /// Juros e multa não precisam de marca: são dinheiro de verdade e entram como pagamento
+  /// comum, maior que o título.
+  adjustment Boolean @default(false)
+
+  /// Por onde o dinheiro passou. Nulo quando não se sabe — é o que mantém a baixa
+  /// possível para quem ainda não cadastrou conta nenhuma.
+  accountId String?
+
   /// Preenchidos quando o pagamento veio do CSV da fatura, e é o par com a obrigação que
   /// torna a reimportação idempotente.
   dedupeHash    String?
@@ -454,9 +507,12 @@ model Payment {
 
   obligation  Obligation   @relation(fields: [obligationId], references: [id], onDelete: Cascade)
   importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  account     BankAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@unique([obligationId, dedupeHash])
   @@index([obligationId, paidAt])
+  @@index([obligationId, confirmed])
+  @@index([accountId, paidAt])
   @@index([paidAt])
 }
 
@@ -484,14 +540,22 @@ model InvoiceEntry {
   forwardedToPersonId String?
   importBatchId       String?
 
+  /// Em que se gastou. Fica aqui, e não na obrigação, porque a obrigação do cartão é a
+  /// **fatura inteira** — categorizar ali só permitiria dizer "mil reais de cartão", que
+  /// não responde nada. A pergunta que a categoria existe para responder é em que o mês
+  /// foi gasto, e isso só a linha do extrato sabe.
+  categoryId String?
+
   createdAt DateTime @default(now())
 
   invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   forwardedTo Person?      @relation(fields: [forwardedToPersonId], references: [id], onDelete: SetNull)
   importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   installment Installment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@unique([invoiceId, dedupeHash])
+  @@index([categoryId])
   @@index([installmentId])
   @@index([invoiceId, date])
   @@index([forwardedToPersonId])
@@ -639,4 +703,196 @@ model SettlementTransfer {
   to         Person     @relation("TransferenciaDestino", fields: [toPersonId], references: [id], onDelete: Cascade)
 
   @@index([settlementId])
+}
+
+// ---------------------------------------------------------------------------
+// Categoria, orçamento por categoria e conta bancária
+// ---------------------------------------------------------------------------
+
+/// Tipo de conta onde o dinheiro fica. Vale-alimentação entra porque é forma de
+/// pagamento no domínio, e sem conta própria o saldo dele se misturaria ao da corrente.
+enum AccountKind {
+  CHECKING
+  SAVINGS
+  WALLET
+  MEAL_VOUCHER
+}
+
+/// Classificação de um lançamento: "Mercado", "Aluguel", "Salário".
+///
+/// A categoria é do **usuário**, não global: cada um organiza as próprias contas do jeito
+/// que pensa nelas, e uma lista imposta viraria a categoria "Outros" levando metade dos
+/// lançamentos.
+model Category {
+  id      String @id @default(uuid())
+  ownerId String
+
+  name String
+  /// Hex, para o gráfico e a etiqueta. Nulo usa a cor neutra do tema.
+  color String?
+  /// Nulo quando serve aos dois lados — "Transporte" pode ser gasto e reembolso.
+  direction Direction?
+
+  /// Arquivada sai das listas de escolha e continua nos lançamentos antigos. Excluir
+  /// deixaria o histórico sem classificação, que é o oposto do motivo de existir.
+  archived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner          User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  obligations    Obligation[]
+  recurrences    Recurrence[]
+  budgets        CategoryBudget[]
+  invoiceEntries InvoiceEntry[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId, archived])
+}
+
+/// Meta ou limite de uma categoria.
+///
+/// `month` nulo é o valor **padrão**, que vale para todo mês sem ajuste próprio. Com ele,
+/// definir o limite de mercado uma vez basta — e o mês do Natal ainda pode ter o seu.
+model CategoryBudget {
+  id         String  @id @default(uuid())
+  categoryId String
+  month      String? @db.Char(7)
+  amount     Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, month])
+}
+
+/// Onde o dinheiro fica: corrente, poupança, carteira, vale.
+///
+/// O saldo **não** é campo: é `initialBalance` mais a soma dos pagamentos que passaram
+/// por ela. Guardar o saldo faria ele divergir do extrato no primeiro estorno, e a
+/// divergência só apareceria quando alguém conferisse — tarde demais.
+model BankAccount {
+  id      String @id @default(uuid())
+  ownerId String
+
+  name           String
+  kind           AccountKind @default(CHECKING)
+  /// O saldo no dia em que a conta entrou no sistema. O histórico anterior não existe aqui.
+  initialBalance Decimal     @default(0) @db.Decimal(14, 2)
+  archived       Boolean     @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId, archived])
+}
+
+// ---------------------------------------------------------------------------
+// Histórico de fechamento por participante
+// ---------------------------------------------------------------------------
+
+/// O registro de um acerto de contas com uma pessoa.
+///
+/// Antes disto o fechamento existia só como número no contador e como texto na observação
+/// das baixas: dava para saber que houve, e não o que entrou nele. O registro é o que
+/// permite reabrir o papel meses depois com os mesmos números.
+model ParticipantSettlement {
+  id       String @id @default(uuid())
+  ownerId  String
+  personId String
+
+  /// Sequencial por usuário. É o número que aparece no papel.
+  number Int
+  month  String @db.Char(7)
+
+  totalReceivable Decimal @db.Decimal(14, 2)
+  totalPayable    Decimal @db.Decimal(14, 2)
+  /// A receber − a pagar. Positivo: o participante ficou devendo.
+  balance         Decimal @db.Decimal(14, 2)
+
+  /// A obrigação criada com a diferença, quando houve.
+  adjustmentId String?
+
+  settledAt DateTime
+  createdAt DateTime @default(now())
+
+  owner   User                         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  person  Person                       @relation(fields: [personId], references: [id], onDelete: Cascade)
+  entries ParticipantSettlementEntry[]
+
+  @@unique([ownerId, number])
+  @@index([ownerId, personId, month])
+}
+
+/// Um título que entrou num fechamento, com o valor que ele tinha ali.
+///
+/// O valor é copiado, e não lido da obrigação: o título pode ser editado depois, e o papel
+/// assinado precisa continuar batendo com o que foi assinado.
+model ParticipantSettlementEntry {
+  id           String  @id @default(uuid())
+  settlementId String
+  obligationId String
+  description  String
+  amount       Decimal @db.Decimal(14, 2)
+  receivable   Boolean
+
+  settlement ParticipantSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+}
+
+/// A combinação de fechar com alguém todo mês — o aluguel rachado, a internet dividida.
+///
+/// Não dispara nada sozinho: marca a data a partir da qual o fechamento daquele mês está
+/// pronto, e o sistema avisa. Fechar por conta própria quitaria títulos sem ninguém
+/// conferir, e a conferência é a razão de o fechamento existir.
+model SettlementSchedule {
+  id       String @id @default(uuid())
+  ownerId  String
+  personId String @unique
+
+  /// Dia do mês a partir do qual o acerto daquele mês é cobrado na tela.
+  dayOfMonth Int     @default(1)
+  active     Boolean @default(true)
+  /// Último mês já fechado por esta agenda, em YYYY-MM. Evita cobrar o que já foi feito.
+  lastMonth  String? @db.Char(7)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner  User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, active])
+}
+
+/// Confirmação de leitura de um aviso.
+///
+/// Os avisos continuam **derivados** — não há tabela de notificação. O que se guarda aqui é
+/// só a leitura: qual aviso a pessoa disse ter visto, e em que estado ele estava.
+///
+/// A `assinatura` é o que impede a confirmação de virar um silenciador permanente. Ela
+/// resume o conteúdo do aviso (o detalhe e o valor); se o motivo mudar — a dívida atrasada
+/// que recebeu um pagamento parcial e agora cobra outro valor — a assinatura muda junto e o
+/// aviso volta a aparecer. Sem isso, marcar "Aluguel atrasado" como lido calaria aquele
+/// aluguel para sempre, inclusive quando ele voltasse a ser outra coisa.
+model NoticeRead {
+  id      String @id @default(uuid())
+  userId  String
+  /// O id derivado do aviso: estável para a mesma causa (`venc-<id>`, `limite-<cat>-<mês>`).
+  noticeId   String
+  assinatura String
+
+  readAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, noticeId])
+  @@index([userId])
 }

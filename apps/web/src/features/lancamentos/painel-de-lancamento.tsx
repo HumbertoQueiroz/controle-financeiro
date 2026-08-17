@@ -6,6 +6,8 @@ import { hoje, mesAtual } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Campo, Input, Select } from '@/components/ui/campo';
 import { Painel } from '@/components/ui/painel';
+import { SeletorDeCategoria } from '@/features/categorias/seletor-de-categoria';
+import { SeletorDePessoa } from '@/features/pessoas/seletor-de-pessoa';
 
 interface Props {
   aberto: boolean;
@@ -23,6 +25,8 @@ interface Props {
 export function PainelDeLancamento({ aberto, aoFechar, direcao }: Props) {
   const clienteDeQuery = useQueryClient();
   const [recorrente, setRecorrente] = useState(false);
+  const [categoria, setCategoria] = useState<string | null>(null);
+  const [pessoa, setPessoa] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const invalidar = () =>
@@ -38,6 +42,8 @@ export function PainelDeLancamento({ aberto, aoFechar, direcao }: Props) {
       api.post(recorrente ? '/recorrencias' : '/lancamentos', dados),
     onSuccess: async () => {
       setErro(null);
+      setCategoria(null);
+      setPessoa(null);
       await invalidar();
       aoFechar();
     },
@@ -47,14 +53,14 @@ export function PainelDeLancamento({ aberto, aoFechar, direcao }: Props) {
   const aoEnviar = (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
     const dados = new FormData(evento.currentTarget);
-    const contraparte = String(dados.get('contraparte') ?? '').trim();
 
     salvar.mutate({
       direcao,
       descricao: String(dados.get('descricao')),
       valor: String(dados.get('valor')),
       formaDePagamento: String(dados.get('formaDePagamento')),
-      ...(contraparte ? { contraparte } : {}),
+      ...(pessoa ? { pessoaId: pessoa } : {}),
+      ...(categoria ? { categoriaId: categoria } : {}),
       ...(recorrente
         ? {
             diaDoVencimento: Number(dados.get('diaDoVencimento')),
@@ -79,6 +85,22 @@ export function PainelDeLancamento({ aberto, aoFechar, direcao }: Props) {
       }
     >
       <form onSubmit={aoEnviar} className="flex flex-col gap-4">
+        <Campo
+          rotulo="Categoria"
+          auxilio="Opcional. É o que faz o relatório por categoria existir."
+        >
+          {(id) => (
+            <div id={id}>
+              <SeletorDeCategoria
+                valor={categoria}
+                aoMudar={setCategoria}
+                rotulo="Categoria"
+                direcao={direcao}
+              />
+            </div>
+          )}
+        </Campo>
+
         <Campo rotulo="Descrição">
           {(id) => (
             <Input
@@ -107,10 +129,20 @@ export function PainelDeLancamento({ aberto, aoFechar, direcao }: Props) {
 
         <Campo
           rotulo={ehEntrada ? 'De quem (opcional)' : 'Para quem (opcional)'}
-          auxilio="Quem paga ou recebe, quando não é alguém do seu cadastro."
+          auxilio="Escolha alguém do seu cadastro, ou cadastre na hora."
         >
           {(id) => (
-            <Input id={id} name="contraparte" placeholder={ehEntrada ? 'Empresa' : 'Imobiliária'} />
+            <div id={id}>
+              {/* Escolher da agenda, e não digitar um nome solto: o mesmo "Bruno" escrito
+                  de três jeitos viraria três contrapartes, e nenhuma delas some no
+                  fechamento com o Bruno de verdade. */}
+              <SeletorDePessoa
+                valor={pessoa}
+                aoMudar={setPessoa}
+                rotulo={ehEntrada ? 'De quem' : 'Para quem'}
+                rotuloVazio="Ninguém"
+              />
+            </div>
           )}
         </Campo>
 

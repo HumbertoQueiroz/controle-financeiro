@@ -11,7 +11,7 @@ import {
 import { api } from '@/lib/api';
 import { formatarData } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Campo, Input, Select } from '@/components/ui/campo';
+import { Campo, Input, InputDeTelefone, Select } from '@/components/ui/campo';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
 import { Carregando, Erro, Vazio } from '@/components/ui/estados';
 import { Painel } from '@/components/ui/painel';
@@ -108,17 +108,9 @@ export function Compartilhar() {
 
           <Campo
             rotulo="WhatsApp (opcional)"
-            auxilio="Com DDD. Sem isso, você escolhe o contato no app."
+            auxilio="Só números, com DDD. Sem isso, você escolhe o contato no app."
           >
-            {(id) => (
-              <Input
-                id={id}
-                name="telefone"
-                type="tel"
-                inputMode="tel"
-                placeholder="(11) 90000-0000"
-              />
-            )}
+            {(id) => <InputDeTelefone id={id} name="telefone" />}
           </Campo>
 
           <Campo

@@ -43,10 +43,10 @@ WhatsApp, já vai para aquele número; sem ele, você escolhe o contato dentro d
 
 ### Campos opcionais
 
-| Campo                      | Para que serve                                       |
-| -------------------------- | ---------------------------------------------------- |
-| **WhatsApp**               | Abrir a conversa já no contato certo                 |
-| **É alguém da sua lista?** | Ligar o convidado a uma pessoa que você já cadastrou |
+| Campo                      | Para que serve                                            |
+| -------------------------- | --------------------------------------------------------- |
+| **WhatsApp**               | Abrir a conversa já no contato certo. 11 dígitos, com DDD |
+| **É alguém da sua lista?** | Ligar o convidado a uma pessoa que você já cadastrou      |
 
 O segundo campo é o que faz diferença de verdade: ao aceitar, essa pessoa passa a ver **as
 contas que você já lançou no nome dela**. Sem o vínculo, ela entra e vê uma tela vazia, mesmo

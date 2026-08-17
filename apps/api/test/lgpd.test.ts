@@ -14,7 +14,7 @@ afterEach(() => app.close());
 const cadastroValido = {
   nome: 'Ana',
   email: 'ana@exemplo.com',
-  senha: 'senha-de-teste-123',
+  senha: 'Senha-De-Teste-123',
   aceitaTermos: true,
   aceitaPrivacidade: true,
 };

@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Warning } from '@phosphor-icons/react';
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Orcamento as TipoDeOrcamento } from '@controle/shared';
 import { api } from '@/lib/api';
+import { useParametroDaUrl } from '@/lib/url';
 import { deslocarMes, mesAtual } from '@/lib/utils';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
 import { Carregando, Erro } from '@/components/ui/estados';
@@ -12,17 +12,18 @@ import { SeletorDeMes } from '@/components/seletor-de-mes';
 import { ListaDeLancamentos } from '@/features/lancamentos/lista-de-lancamentos';
 
 /**
- * Orçamento do mês — a tela inicial.
+ * Orçamento do mês, item a item.
  *
- * Reúne o que entra e o que sai, separando o que já teve baixa do que segue em aberto. É
- * a pergunta que se faz ao abrir o app: "como está este mês?".
+ * Reúne o que entra e o que sai, separando o que já teve baixa do que segue em aberto. O
+ * dashboard responde "como está este mês?" em três números; esta tela é onde se confere
+ * lançamento por lançamento de onde esses números vieram.
  *
  * O mês é delimitado pelo **vencimento**. Uma conta de agosto paga em setembro pertence ao
  * orçamento de agosto — foi ali que ela foi assumida —, e o que a baixa responde é outra
  * coisa: quanto de fato se moveu. As duas leituras aparecem lado a lado.
  */
 export function Orcamento() {
-  const [mes, setMes] = useState(mesAtual());
+  const [mes, setMes] = useParametroDaUrl('mes', mesAtual());
 
   const orcamento = useQuery({
     queryKey: ['orcamento', mes],

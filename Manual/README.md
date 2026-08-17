@@ -8,20 +8,22 @@ operação e por que algumas coisas funcionam do jeito que funcionam.
 
 ## Índice
 
-| Capítulo                                         | O que você aprende                                                  |
-| ------------------------------------------------ | ------------------------------------------------------------------- |
-| [1. Primeiros passos](01-primeiros-passos.md)    | Criar conta, entrar, trocar senha e o que aparece na tela           |
-| [2. Orçamento do mês](02-orcamento.md)           | A tela inicial: quanto tem, quanto já se moveu, o que está atrasado |
-| [3. Contas a receber e a pagar](03-contas.md)    | Lançar, dar baixa, estornar, e cadastrar o que se repete todo mês   |
-| [4. Cartão de crédito](04-cartao.md)             | Cadastrar cartão, importar a fatura e classificar os gastos         |
-| [5. Parcelamentos](05-parcelamentos.md)          | Acompanhar compras parceladas e quanto ainda falta                  |
-| [6. Grupos e rateio](06-grupos.md)               | Dividir as contas do rolê e fechar o mês                            |
-| [7. Pessoas](07-pessoas.md)                      | Cadastrar quem participa das suas contas                            |
-| [8. Compartilhar relatórios](08-compartilhar.md) | Dar e tirar acesso, e convidar por WhatsApp                         |
-| [9. Relatórios](09-relatorios.md)                | Os três modos de ver suas contas                                    |
-| [10. Minha conta](10-minha-conta.md)             | Senha, baixar seus dados e excluir a conta                          |
-| [11. Administração](11-administracao.md)         | Só para administradores: gerenciar usuários                         |
-| [12. Dúvidas comuns](12-duvidas.md)              | O que fazer quando algo não sai como esperado                       |
+| Capítulo                                                            | O que você aprende                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [1. Primeiros passos](01-primeiros-passos.md)                       | Criar conta, entrar, trocar senha e o que aparece na tela           |
+| [2. Dashboard e orçamento](02-orcamento.md)                         | A tela inicial: quanto tem, quanto já se moveu, o que está atrasado |
+| [3. Contas a receber e a pagar](03-contas.md)                       | Lançar, dar baixa, estornar, e cadastrar o que se repete todo mês   |
+| [4. Cartão de crédito](04-cartao.md)                                | Cadastrar cartão, importar a fatura e classificar os gastos         |
+| [5. Parcelamentos](05-parcelamentos.md)                             | Acompanhar compras parceladas e quanto ainda falta                  |
+| [6. Grupos e rateio](06-grupos.md)                                  | Dividir as contas do rolê e fechar o mês                            |
+| [7. Pessoas](07-pessoas.md)                                         | Cadastrar quem participa das suas contas                            |
+| [8. Compartilhar relatórios](08-compartilhar.md)                    | Dar e tirar acesso, e convidar por WhatsApp                         |
+| [9. Relatórios](09-relatorios.md)                                   | Os três modos de ver suas contas                                    |
+| [10. Minha conta](10-minha-conta.md)                                | Senha, baixar seus dados e excluir a conta                          |
+| [11. Administração](11-administracao.md)                            | Só para administradores: gerenciar usuários                         |
+| [12. Dúvidas comuns](12-duvidas.md)                                 | O que fazer quando algo não sai como esperado                       |
+| [13. Fechamento com um participante](13-fechamento.md)              | Acertar as contas com uma pessoa e imprimir o papel                 |
+| [14. Categorias, contas, avisos e busca](14-categorias-e-contas.md) | Em quê você gasta, quanto você tem e o que exige atenção            |
 
 ## Os dois conceitos que explicam o resto
 

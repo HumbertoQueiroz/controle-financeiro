@@ -59,6 +59,7 @@ export const api = {
   get: <T>(caminho: string) => requisitar<T>('GET', caminho),
   post: <T>(caminho: string, corpo?: unknown) => requisitar<T>('POST', caminho, { corpo }),
   patch: <T>(caminho: string, corpo?: unknown) => requisitar<T>('PATCH', caminho, { corpo }),
+  put: <T>(caminho: string, corpo?: unknown) => requisitar<T>('PUT', caminho, { corpo }),
   delete: <T>(caminho: string) => requisitar<T>('DELETE', caminho),
   enviarArquivo: <T>(caminho: string, formulario: FormData) =>
     requisitar<T>('POST', caminho, { formulario }),

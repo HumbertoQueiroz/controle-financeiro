@@ -19,6 +19,7 @@ import { MetadadosDaRota } from '@/publico/metadados-da-rota';
  */
 const Cadastro = lazy(() => import('@/pages/cadastro').then((m) => ({ default: m.Cadastro })));
 const Convite = lazy(() => import('@/pages/convite').then((m) => ({ default: m.Convite })));
+const Dashboard = lazy(() => import('@/pages/dashboard').then((m) => ({ default: m.Dashboard })));
 const Orcamento = lazy(() => import('@/pages/orcamento').then((m) => ({ default: m.Orcamento })));
 const ContasAReceber = lazy(() =>
   import('@/pages/contas').then((m) => ({ default: m.ContasAReceber })),
@@ -40,7 +41,28 @@ const DetalheDoGrupo = lazy(() =>
 const DetalheDoRole = lazy(() =>
   import('@/pages/role').then((m) => ({ default: m.DetalheDoRole })),
 );
+const Participantes = lazy(() =>
+  import('@/pages/participantes').then((m) => ({ default: m.Participantes })),
+);
 const Pessoas = lazy(() => import('@/pages/pessoas').then((m) => ({ default: m.Pessoas })));
+const Fechamento = lazy(() =>
+  import('@/pages/fechamento').then((m) => ({ default: m.Fechamento })),
+);
+const Categorias = lazy(() =>
+  import('@/pages/categorias').then((m) => ({ default: m.Categorias })),
+);
+const Classificar = lazy(() =>
+  import('@/pages/classificar').then((m) => ({ default: m.Classificar })),
+);
+const ContasBancarias = lazy(() =>
+  import('@/pages/contas-bancarias').then((m) => ({ default: m.ContasBancarias })),
+);
+const Recorrencias = lazy(() =>
+  import('@/pages/recorrencias').then((m) => ({ default: m.Recorrencias })),
+);
+const HistoricoDeFechamentos = lazy(() =>
+  import('@/pages/historico-de-fechamentos').then((m) => ({ default: m.HistoricoDeFechamentos })),
+);
 const Mais = lazy(() => import('@/pages/mais').then((m) => ({ default: m.Mais })));
 const Parcelamentos = lazy(() =>
   import('@/pages/parcelamentos').then((m) => ({ default: m.Parcelamentos })),
@@ -106,7 +128,8 @@ export function App() {
 
                   <Route path="/app" element={<AppShell />}>
                     {/* O orçamento do mês é a primeira pergunta de quem abre o app. */}
-                    <Route index element={<Orcamento />} />
+                    <Route index element={<Dashboard />} />
+                    <Route path="orcamento" element={<Orcamento />} />
                     <Route path="a-receber" element={<ContasAReceber />} />
                     <Route path="a-pagar" element={<ContasAPagar />} />
                     <Route path="cartoes" element={<Cartoes />} />
@@ -116,7 +139,14 @@ export function App() {
                     <Route path="grupos" element={<Grupos />} />
                     <Route path="grupos/:id" element={<DetalheDoGrupo />} />
                     <Route path="roles/:id" element={<DetalheDoRole />} />
+                    <Route path="participantes" element={<Participantes />} />
                     <Route path="pessoas" element={<Pessoas />} />
+                    <Route path="pessoas/:id/fechamento" element={<Fechamento />} />
+                    <Route path="categorias" element={<Categorias />} />
+                    <Route path="classificar" element={<Classificar />} />
+                    <Route path="contas" element={<ContasBancarias />} />
+                    <Route path="recorrentes" element={<Recorrencias />} />
+                    <Route path="fechamentos" element={<HistoricoDeFechamentos />} />
                     <Route path="mais" element={<Mais />} />
                     <Route path="compartilhar" element={<Compartilhar />} />
                     <Route path="relatorios" element={<Relatorios />} />

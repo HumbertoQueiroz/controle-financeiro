@@ -1,8 +1,13 @@
 import {
+  ArrowsClockwise,
+  Bank,
   ChartPieSlice,
   CaretRight,
   CreditCard,
+  Handshake,
+  Receipt,
   ShareNetwork,
+  SquaresFour,
   UserCircle,
   Users,
   UsersThree,
@@ -20,6 +25,42 @@ import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
  * mostra tudo de uma vez.
  */
 const SECOES: { para: string; titulo: string; descricao: string; Icone: Icon }[] = [
+  {
+    para: '/app/contas',
+    titulo: 'Contas',
+    descricao: 'Onde o dinheiro fica, e quanto tem em cada uma',
+    Icone: Bank,
+  },
+  {
+    para: '/app/categorias',
+    titulo: 'Categorias',
+    descricao: 'Em que você gasta, com limite por mês',
+    Icone: SquaresFour,
+  },
+  {
+    para: '/app/recorrentes',
+    titulo: 'Recorrentes',
+    descricao: 'Salário, aluguel, internet — o que se repete',
+    Icone: ArrowsClockwise,
+  },
+  {
+    para: '/app/orcamento',
+    titulo: 'Orçamento do mês',
+    descricao: 'Tudo que vence no mês, item a item',
+    Icone: ChartPieSlice,
+  },
+  {
+    para: '/app/participantes',
+    titulo: 'Participantes',
+    descricao: 'Quanto cada pessoa deve a você, e você a ela',
+    Icone: Handshake,
+  },
+  {
+    para: '/app/fechamentos',
+    titulo: 'Fechamentos',
+    descricao: 'Os acertos de contas já feitos',
+    Icone: Receipt,
+  },
   {
     para: '/app/parcelamentos',
     titulo: 'Parcelamentos',

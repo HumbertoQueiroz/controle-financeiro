@@ -17,14 +17,24 @@ e a partir daí ele enxerga o que deve. Veja
 
 Toque em **Nova pessoa**.
 
-| Campo        | Observação                                    |
-| ------------ | --------------------------------------------- |
-| **Nome**     | Obrigatório                                   |
-| **E-mail**   | Opcional. Serve para convidá-la depois        |
-| **WhatsApp** | Opcional. Serve para montar o link do convite |
+| Campo        | Observação                                                                    |
+| ------------ | ----------------------------------------------------------------------------- |
+| **Nome**     | Obrigatório                                                                   |
+| **E-mail**   | Opcional. Serve para convidá-la depois                                        |
+| **WhatsApp** | Opcional. Serve para montar o link do convite. **11 dígitos**: DDD e o número |
+
+O campo de WhatsApp aceita colar do jeito que você tem em mãos — `(65) 99645-2787`,
+`+55 65 99645-2787`, um contato copiado da agenda — e guarda só os números, já sem o `55`.
+O código do país é acrescentado sozinho na hora de montar o link.
 
 Não é possível ter duas pessoas com o mesmo e-mail na sua lista: ficaria indefinido a qual
 delas uma dívida pertence, e o convite não saberia qual vincular.
+
+## Acertar as contas
+
+O botão **Fechamento**, ao lado de cada pessoa, abre o acerto de contas com ela: tudo em
+aberto entre vocês dois, o saldo, a quitação em lote e o papel para imprimir. Veja
+[Fechamento com um participante](13-fechamento.md).
 
 ## Você mesmo na lista
 

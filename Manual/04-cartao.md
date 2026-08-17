@@ -17,6 +17,23 @@ Em **Cartões**, toque em **Novo cartão**.
 > e validade não existem em campo nenhum, nem em log. Não há como um vazamento daqui virar
 > fraude no seu cartão.
 
+## Editar um cartão
+
+Toque no **lápis** ao lado do cartão na lista. Todos os campos do cadastro podem ser
+corrigidos, mais um:
+
+| Campo             | Observação                                                    |
+| ----------------- | ------------------------------------------------------------- |
+| **Cartão em uso** | Desmarque para aposentar o cartão sem perder o histórico dele |
+
+Não há exclusão de cartão, e é de propósito: apagá-lo levaria junto as faturas, os
+lançamentos e os parcelamentos. Um cartão fora de uso fica marcado como **Inativo** e sai da
+frente, com tudo que passou por ele preservado.
+
+> **Mudar o dia de fechamento ou o de vencimento reajusta as faturas ainda em aberto.** As
+> fechadas e as pagas ficam como estão — a data delas é o que de fato aconteceu, e reescrever
+> o passado para combinar com uma configuração de hoje falsificaria o histórico.
+
 ### Por que o dia de fechamento importa
 
 É ele que decide em qual fatura cada compra entra. **Compra feita depois do fechamento vai
@@ -49,7 +66,7 @@ confirmar**.
 | Campo             | Observação                                                                  |
 | ----------------- | --------------------------------------------------------------------------- |
 | **Cartão**        | Já vem selecionado. A opção **+ Cadastrar cartão…** cria um novo aqui mesmo |
-| **Mês da fatura** | O mês que você espera que o arquivo seja                                    |
+| **Mês da fatura** | **Todos** os lançamentos do arquivo entram nesta fatura                     |
 | **Arquivo CSV**   | O arquivo baixado do seu banco                                              |
 
 O cadastro de cartão na hora existe para o caminho não travar: baixar a fatura, abrir a
@@ -57,25 +74,48 @@ importação e descobrir que precisa sair para cadastrar o cartão faria você r
 
 ### Etapa 2 — conferir e classificar
 
-O sistema lê o arquivo e mostra o que encontrou, separado em seções.
+O sistema lê o arquivo e mostra o que encontrou, separado em seções que abrem e fecham.
 
-#### Lançamentos
+**O que precisa da sua decisão já vem aberto**; o que é só informação vem fechado, com a
+quantidade e o total ao lado. Toque no título para abrir.
 
-As compras avulsas. Para cada uma:
+Ao final, o **Resumo**: quanto soma cada seção e quanto a fatura vai ficar. É o número para
+conferir com o extrato do banco antes de confirmar.
+
+#### Novos lançamentos
+
+As compras avulsas que ainda não estão nesta fatura. Para cada uma:
 
 - **Quem paga** — o padrão é **Meu**. Escolha a pessoa quando o gasto foi de outra pessoa,
   ou use **+ Cadastrar pessoa…** para criar na hora, sem sair da tela.
-- **Fatura** — vem sugerida pela data da compra e pelo fechamento do cartão. Se alguma
-  divergir do mês que você escolheu, o rótulo avisa **"difere do mês escolhido"**.
+- **Fatura** — vem preenchida com o mês que você escolheu na tela anterior, para todas as
+  linhas. Se você trocar a de alguma, o rótulo avisa **"difere do mês escolhido"**.
+- **Categoria** — em que se gastou. Opcional, e é aqui que vale a pena: duas semanas depois,
+  "PG \*IFD" não diz nada a ninguém. Falta uma categoria? **+ Cadastrar categoria…** cria na
+  hora, sem sair da tela e sem perder o que você já classificou.
+
+Se você já classificou uma compra com a mesma descrição, a categoria dela **já vem
+escolhida**. Quem classificou "Uber" uma vez não deveria decidir de novo todo mês.
+
+#### Já importados antes
+
+As linhas que já estão nesta fatura, de uma importação anterior. **Não serão duplicadas.**
+
+Vem fechada, mostrando quantas são e quanto somam. É o que responde "por que o total de
+novos lançamentos é menor que o do extrato".
+
+> **Compra de 30 de julho no extrato de agosto é normal**, e entra na fatura de agosto — foi
+> nela que o banco a colocou, por ter sido feita depois do fechamento. O sistema não
+> recalcula isso: o arquivo que você baixou **é** a fatura daquele mês.
 
 Marcar alguém como responsável faz duas coisas ao mesmo tempo: a dívida com o cartão
 continua sendo sua, e o valor vira uma **conta a receber daquela pessoa**. As duas coexistem
 porque as duas são verdade — você deve ao banco, e ela deve a você.
 
-#### Novo parcelamento
+#### Novos parcelamentos
 
-As compras parceladas que aparecem pela primeira vez. Além de quem paga, a linha mostra
-quantas parcelas serão criadas.
+As compras parceladas que aparecem pela primeira vez. Além de quem paga e da categoria, a
+linha mostra quantas parcelas serão criadas.
 
 **Ao confirmar, todas as parcelas restantes são lançadas nas faturas futuras.** Uma compra
 em 10 vezes na parcela 3 cria as parcelas de 3 a 10, cada uma no seu mês. É o que faz o
@@ -89,36 +129,73 @@ foram criadas quando o parcelamento apareceu pela primeira vez.
 Esta seção existe só para você entender por que aquelas linhas do extrato não estão sendo
 importadas. Sem ela, pareceria que o sistema perdeu parte do arquivo.
 
-#### Pagamentos da fatura
+#### Pagamento da fatura anterior
 
-Se o arquivo tiver linhas de pagamento da fatura, elas aparecem aqui. São registradas
-**apenas se a fatura estiver em aberto** no sistema; numa fatura já paga ou fechada, são
-ignoradas.
+Se o arquivo tiver a linha de pagamento, ela aparece aqui — e vai para o **mês anterior**.
+
+> **O pagamento no extrato de agosto quitou a fatura de julho.** É assim em todo cartão: a
+> cobrança só acontece depois de o ciclo fechar. Ele é a única linha do arquivo que pertence
+> a outro mês.
+
+Você escolhe o que fazer com ela:
+
+| Escolha                           | Quando usar                                                  |
+| --------------------------------- | ------------------------------------------------------------ |
+| **Abater da fatura de \<mês\>**   | A fatura anterior está no sistema e em aberto                |
+| **Ignorar este pagamento**        | A fatura anterior é de antes de você usar o sistema          |
+| **Registrar como saldo anterior** | Você quer o saldo da conta certo, mesmo sem o detalhe do mês |
+
+Na **primeira importação** de um cartão a fatura anterior nunca existe, e a tela avisa
+disso. A escolha já vem em "ignorar", que é a única que não inventa dado nenhum.
+
+**Registrar como saldo anterior** cria a fatura que falta com um único lançamento do valor
+pago, já quitado. Serve para o dinheiro que saiu da sua conta aparecer em algum lugar — sem
+isso, o saldo do app fica alto naquele valor para sempre. O que ela não faz: reconstruir o
+mês. Você terá o total, não o que foi gasto. E se você pagou só parte da fatura, o valor
+registrado fica menor que a fatura real.
+
+Um pagamento **maior do que falta na fatura** é recusado com aviso. Quase sempre significa
+que ele foi para o mês errado.
 
 ### O aviso de divergência
 
-Ao confirmar, se alguma linha for para uma fatura diferente do mês que você escolheu, o
-sistema **recusa e avisa**, dizendo quantas linhas e para qual mês.
+Só aparece quando **você** manda alguma linha para outro mês. Ao confirmar, o sistema
+**recusa e avisa**, dizendo quantas linhas e para qual mês.
 
-O botão muda para **Confirmar mesmo assim**. Se a divergência faz sentido — a compra
-depois do fechamento, por exemplo —, confirme. Se não, volte e corrija a fatura das linhas
-marcadas.
+O botão muda para **Confirmar mesmo assim**. Se a troca foi proposital, confirme. Se não,
+volte e corrija a fatura das linhas marcadas.
 
-O aviso existe porque escolher agosto e o arquivo ser de julho é o erro mais comum, e sem
-ele o problema só apareceria quando o total da fatura não batesse com o do banco.
+O aviso existe porque mandar um lançamento para outro mês é decisão de peso, e sem ele o
+problema só apareceria quando o total da fatura não batesse com o do banco.
 
 ### Etapa 3 — o resultado
 
 Mostra o que aconteceu:
 
-| Número                     | Significado                          |
-| -------------------------- | ------------------------------------ |
-| **Lançamentos novos**      | Entraram agora                       |
-| **Já existiam**            | Reconhecidos e não duplicados        |
-| **Parcelamentos criados**  | Com a quantidade de parcelas geradas |
-| **Pagamentos registrados** | Baixas na fatura                     |
-| **Pagamentos ignorados**   | A fatura não estava em aberto        |
-| **Faturas afetadas**       | Cada mês tocado e o total dele       |
+| Número                         | Significado                           |
+| ------------------------------ | ------------------------------------- |
+| **Lançamentos novos**          | Entraram agora                        |
+| **Já existiam**                | Reconhecidos e não duplicados         |
+| **Parcelamentos criados**      | Com a quantidade de parcelas geradas  |
+| **Pagamentos registrados**     | Baixas na fatura anterior             |
+| **Faturas anteriores criadas** | Pelo "registrar como saldo anterior"  |
+| **Pagamentos ignorados**       | Por escolha sua, ou fatura não aberta |
+| **Faturas afetadas**           | Cada mês tocado e o total dele        |
+
+## Desfazer uma importação
+
+Na página do cartão, abaixo das faturas, fica a lista de **Importações** — o arquivo, a data
+e quantos lançamentos entraram. O ícone de lixeira desfaz.
+
+Excluir uma importação apaga **o que ela criou**: os lançamentos, as parcelas que ela
+projetou nas faturas seguintes e o pagamento que ela registrou. As faturas são recalculadas,
+e as que ficarem sem nenhum lançamento saem da lista.
+
+> **As outras importações continuam como estão.** Se você importou agosto e depois setembro,
+> desfazer agosto não leva setembro junto.
+
+Um caso é recusado: quando **alguém já pagou um repasse** daquela importação. Apagar o
+título sumiria com o registro de um dinheiro que trocou de mãos. Estorne o pagamento antes.
 
 ## Importar a mesma fatura várias vezes
 

@@ -24,12 +24,12 @@ um cartão; no computador, uma tabela.
 
 Toque em **Novo usuário**.
 
-| Campo                | Observação               |
-| -------------------- | ------------------------ |
-| **Nome**             |                          |
-| **E-mail**           | Precisa ser único        |
-| **Senha provisória** | Pelo menos 8 caracteres  |
-| **Papel**            | Usuário ou Administrador |
+| Campo                | Observação                                                                |
+| -------------------- | ------------------------------------------------------------------------- |
+| **Nome**             |                                                                           |
+| **E-mail**           | Precisa ser único                                                         |
+| **Senha provisória** | Vale a mesma régua de senha forte do cadastro. O campo mostra o que falta |
+| **Papel**            | Usuário ou Administrador                                                  |
 
 A pessoa é **obrigada a trocar a senha no primeiro acesso**. Uma senha que um administrador
 escolheu não é uma senha do dono da conta.
@@ -64,3 +64,7 @@ administração, promova outra pessoa primeiro e peça que ela rebaixe você.
 configuração, ela é gerada e **impressa uma única vez** no console — anote na hora.
 
 Esse administrador entra com a exigência de trocar a senha no primeiro acesso.
+
+Se a senha vier da configuração, ela precisa cumprir a mesma régua exigida de todo mundo. O
+seed **recusa e diz o que falta**, em vez de criar a conta. A conta que enxerga os dados de
+todos é a última que pode ficar de fora da exigência.

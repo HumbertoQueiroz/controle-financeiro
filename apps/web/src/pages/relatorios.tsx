@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import type { Escopo, ItemDoRelatorio, Relatorio } from '@controle/shared';
 import { api } from '@/lib/api';
+import { useParametroDaUrl } from '@/lib/url';
 import { formatarData } from '@/lib/utils';
 import { useAutenticacao } from '@/auth/auth-context';
 import { Cartao, TituloDaSecao } from '@/components/ui/cartao';
@@ -26,8 +26,9 @@ const ROTULO_DA_ORIGEM: Record<ItemDoRelatorio['origem'], string> = {
 
 export function Relatorios() {
   const { usuario } = useAutenticacao();
-  const [modo, setModo] = useState<Escopo>('BOTH');
-  const [situacao, setSituacao] = useState<'ABERTAS' | 'TODAS'>('ABERTAS');
+  const [modoNaUrl, setModo] = useParametroDaUrl('modo', 'BOTH');
+  const modo: Escopo = modoNaUrl === 'PAYABLE' || modoNaUrl === 'RECEIVABLE' ? modoNaUrl : 'BOTH';
+  const [situacao, setSituacao] = useParametroDaUrl('situacao', 'ABERTAS');
 
   const relatorio = useQuery({
     queryKey: ['relatorio', usuario?.id, modo, situacao],

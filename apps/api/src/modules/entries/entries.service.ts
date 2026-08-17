@@ -1,14 +1,17 @@
-import type { Direction, Prisma, PrismaClient } from '@prisma/client';
+import type { Direction, OriginType, PaymentMethod, Prisma, PrismaClient } from '@prisma/client';
 import type { AtualizarLancamento, CriarLancamento, DarBaixa, Direcao } from '@controle/shared';
-import { deCentavos, paraCentavos } from '@controle/shared';
+import { deCentavos, paraCentavos, somarCentavos } from '@controle/shared';
 import { ErroDeRegra, ErroNaoEncontrado } from '../../lib/erros.js';
+import { garantirContaDoUsuario } from '../accounts/accounts.service.js';
 import {
+  confirmarPagamento,
   paraSaidaDePagamento,
   recalcularSituacao,
   registrarPagamento,
 } from './pagamentos.service.js';
 
-const CAMPOS = {
+/** Exportado para o fechamento por participante montar a mesma saída de lançamento. */
+export const CAMPOS = {
   id: true,
   description: true,
   amount: true,
@@ -21,10 +24,12 @@ const CAMPOS = {
   counterpartyLabel: true,
   debtorId: true,
   creditorId: true,
-  debtor: { select: { name: true } },
-  creditor: { select: { name: true } },
+  categoryId: true,
+  debtor: { select: { name: true, userId: true } },
+  creditor: { select: { name: true, userId: true } },
+  category: { select: { name: true, color: true } },
   payments: {
-    select: { id: true, amount: true, paidAt: true, note: true },
+    select: { id: true, amount: true, paidAt: true, note: true, confirmed: true },
     orderBy: { paidAt: 'asc' },
   },
 } as const;
@@ -74,7 +79,37 @@ export function paraSaida(obrigacao: ObrigacaoDoBanco, idsDasFichas: string[]) {
     editavel: obrigacao.originType === 'MANUAL' || obrigacao.originType === 'RECURRENCE',
     atrasado: obrigacao.status !== 'SETTLED' && obrigacao.dueDate < new Date(),
     pagamentos: obrigacao.payments.map(paraSaidaDePagamento),
+    // Quem confirma é quem recebe, e "eu sou o credor" é exatamente o que `ehReceber` já
+    // decidiu. A tela usa isto para mostrar o botão; a autorização de verdade está na rota.
+    podeConfirmarPagamentos: ehReceber,
+    categoriaId: obrigacao.categoryId,
+    categoria: obrigacao.category?.name ?? null,
+    categoriaCor: obrigacao.category?.color ?? null,
   };
+}
+
+/**
+ * Uma baixa registrada por quem **deve** nasce pendente de confirmação.
+ *
+ * Quem paga sabe que pagou; quem recebe sabe se o dinheiro chegou. Só a segunda afirmação
+ * abate a dívida, senão o devedor quitaria o próprio débito sozinho e o título sumiria da
+ * lista de a receber do credor sem nada ter entrado.
+ *
+ * A pendência só faz sentido quando há **outra conta** para confirmar. Se o credor é a
+ * instituição do cartão, uma pessoa sem conta no sistema, ou o próprio usuário, não existe
+ * ninguém do outro lado — e um pagamento pendente ali ficaria pendente para sempre,
+ * travando um título que nunca mais quitaria.
+ */
+export function nasceConfirmado(
+  obrigacao: Pick<ObrigacaoDoBanco, 'debtor' | 'creditor'>,
+  userId: string,
+): boolean {
+  const souODevedor = obrigacao.debtor?.userId === userId;
+  const credorEhOutraConta = Boolean(
+    obrigacao.creditor?.userId && obrigacao.creditor.userId !== userId,
+  );
+
+  return !(souODevedor && credorEhOutraConta);
 }
 
 async function carregarDoUsuario(prisma: PrismaClient, id: string, userId: string) {
@@ -98,7 +133,13 @@ async function carregarDoUsuario(prisma: PrismaClient, id: string, userId: strin
 export async function listar(
   prisma: PrismaClient,
   userId: string,
-  filtro: { direcao: Direcao; mes?: string; situacao: 'ABERTAS' | 'BAIXADAS' | 'TODAS' },
+  filtro: {
+    direcao: Direcao;
+    mes?: string;
+    situacao: 'ABERTAS' | 'BAIXADAS' | 'TODAS';
+    origem?: OriginType;
+    formaDePagamento?: PaymentMethod[];
+  },
 ) {
   const idsDasFichas = await fichasDoUsuario(prisma, userId);
 
@@ -118,6 +159,13 @@ export async function listar(
       ...(periodo ? { dueDate: periodo } : {}),
       ...(filtro.situacao === 'ABERTAS' ? { status: { in: ['OPEN', 'PARTIAL'] } } : {}),
       ...(filtro.situacao === 'BAIXADAS' ? { status: 'SETTLED' } : {}),
+      // Os dois recortes que o dashboard usa para abrir "a lista deste número". Sem eles,
+      // tocar em "faturas de cartão R$ 2.060,00" levaria à lista inteira de R$ 4.190,00, e
+      // o total da tela de destino não bateria com o do card.
+      ...(filtro.origem ? { originType: filtro.origem } : {}),
+      ...(filtro.formaDePagamento?.length
+        ? { paymentMethod: { in: filtro.formaDePagamento } }
+        : {}),
       NOT: { status: 'CANCELLED' },
     },
     select: CAMPOS,
@@ -141,6 +189,10 @@ export async function criar(prisma: PrismaClient, userId: string, dados: CriarLa
     }
   }
 
+  if (dados.categoriaId) {
+    await garantirCategoriaDoUsuario(prisma, dados.categoriaId, userId);
+  }
+
   const contraparte = dados.pessoaId ?? null;
 
   const obrigacao = await prisma.obligation.create({
@@ -155,6 +207,7 @@ export async function criar(prisma: PrismaClient, userId: string, dados: CriarLa
       dueDate: dados.vencimento,
       paymentMethod: dados.formaDePagamento,
       originType: 'MANUAL',
+      categoryId: dados.categoriaId ?? null,
     },
     select: CAMPOS,
   });
@@ -188,6 +241,7 @@ export async function atualizar(
       ...(dados.vencimento !== undefined && { dueDate: dados.vencimento }),
       ...(dados.formaDePagamento !== undefined && { paymentMethod: dados.formaDePagamento }),
       ...(dados.contraparte !== undefined && { counterpartyLabel: dados.contraparte || null }),
+      ...(dados.categoriaId !== undefined && { categoryId: dados.categoriaId || null }),
     },
     select: CAMPOS,
   });
@@ -230,22 +284,50 @@ export async function darBaixa(prisma: PrismaClient, id: string, userId: string,
   }
 
   const valorTotal = paraCentavos(obrigacao.amount.toString());
-  const jaLiquidado = paraCentavos(obrigacao.settledAmount.toString());
-  const restante = valorTotal - jaLiquidado;
+
+  // O teto é o que já foi **declarado**, e não só o que foi confirmado. Um pagamento
+  // pendente ainda não abate a dívida, mas já foi anunciado: sem contá-lo aqui, quem deve
+  // poderia declarar o valor cheio três vezes seguidas enquanto o credor não olha.
+  const jaDeclarado = somarCentavos(
+    obrigacao.payments.map((pagamento) => paraCentavos(pagamento.amount.toString())),
+  );
+  const restante = valorTotal - jaDeclarado;
   const pago = dados.valorPago ? paraCentavos(dados.valorPago) : restante;
 
-  if (pago > restante) {
-    throw new ErroDeRegra(`O valor excede o que falta (${deCentavos(restante)})`);
+  if (restante <= 0) {
+    throw new ErroDeRegra('Já existe pagamento declarado para o valor todo deste lançamento');
   }
 
-  // Cada baixa é um pagamento com data e observação próprias. O total liquidado e a
-  // situação do título saem da soma deles, recalculados dentro da transação.
+  // Pagar **mais** que o título é caso comum e não é erro: são juros e multa de quem pagou
+  // atrasado. O valor entra inteiro, porque foi ele que saiu do banco; o `settledAmount`
+  // continua limitado ao devido, que é o que o CHECK do banco exige.
+  if (dados.contaId) {
+    await garantirContaDoUsuario(prisma, dados.contaId, userId);
+  }
+
   const atualizada = await prisma.$transaction(async (tx) => {
     await registrarPagamento(tx, id, {
       valor: deCentavos(pago),
       pagoEm: dados.dataDaBaixa,
       observacao: dados.observacao ?? null,
+      confirmed: nasceConfirmado(obrigacao, userId),
+      accountId: dados.contaId ?? null,
     });
+
+    // O desconto é uma segunda linha, e não um valor menor no título: mexer no valor
+    // apagaria quanto a dívida era de verdade, e o histórico deixaria de explicar por que
+    // um título de R$ 100 foi quitado com R$ 90.
+    const desconto = restante - pago;
+
+    if (dados.quitar && desconto > 0) {
+      await registrarPagamento(tx, id, {
+        valor: deCentavos(desconto),
+        pagoEm: dados.dataDaBaixa,
+        observacao: 'Desconto',
+        confirmed: nasceConfirmado(obrigacao, userId),
+        adjustment: true,
+      });
+    }
 
     return tx.obligation.findUniqueOrThrow({ where: { id }, select: CAMPOS });
   });
@@ -281,10 +363,50 @@ export async function removerPagamentoDoLancamento(
   return paraSaida(atualizada, idsDasFichas);
 }
 
+/**
+ * Confirma um pagamento que o devedor declarou.
+ *
+ * Só quem recebe confirma. Deixar o devedor confirmar o próprio pagamento devolveria o
+ * problema ao ponto de partida: seria uma baixa de duas etapas feita pela mesma pessoa.
+ */
+export async function confirmarPagamentoDoLancamento(
+  prisma: PrismaClient,
+  id: string,
+  pagamentoId: string,
+  userId: string,
+) {
+  const { obrigacao, idsDasFichas } = await carregarDoUsuario(prisma, id, userId);
+
+  if (!(obrigacao.creditorId && idsDasFichas.includes(obrigacao.creditorId))) {
+    throw new ErroDeRegra('Só quem recebe pode confirmar o pagamento');
+  }
+
+  const pagamento = obrigacao.payments.find((item) => item.id === pagamentoId);
+
+  if (!pagamento) {
+    throw new ErroNaoEncontrado('Pagamento não encontrado');
+  }
+
+  if (pagamento.confirmed) {
+    throw new ErroDeRegra('Este pagamento já está confirmado');
+  }
+
+  const atualizada = await prisma.$transaction(async (tx) => {
+    await confirmarPagamento(tx, pagamentoId, id);
+
+    return tx.obligation.findUniqueOrThrow({ where: { id }, select: CAMPOS });
+  });
+
+  return paraSaida(atualizada, idsDasFichas);
+}
+
 export async function estornarBaixa(prisma: PrismaClient, id: string, userId: string) {
   const { obrigacao, idsDasFichas } = await carregarDoUsuario(prisma, id, userId);
 
-  if (paraCentavos(obrigacao.settledAmount.toString()) === 0) {
+  // A conta é pelos pagamentos, e não por `settledAmount`: um título com só uma baixa
+  // pendente de confirmação tem liquidado zero e mesmo assim tem o que estornar. Estornar
+  // ali é como o credor recusa um pagamento que não reconhece.
+  if (obrigacao.payments.length === 0) {
     throw new ErroDeRegra('Este lançamento não tem baixa para estornar');
   }
 
@@ -303,4 +425,22 @@ export async function estornarBaixa(prisma: PrismaClient, id: string, userId: st
 /** Direção do enum do banco a partir da direção do contrato. */
 export function paraDirecaoDoBanco(direcao: Direcao): Direction {
   return direcao;
+}
+
+/** Recusa uma categoria que não é do usuário antes de gravá-la num lançamento. */
+export async function garantirCategoriaDoUsuario(
+  prisma: PrismaClient | Prisma.TransactionClient,
+  categoriaId: string,
+  userId: string,
+) {
+  const categoria = await prisma.category.findFirst({
+    where: { id: categoriaId, ownerId: userId },
+    select: { id: true },
+  });
+
+  if (!categoria) {
+    throw new ErroNaoEncontrado('Categoria não encontrada');
+  }
+
+  return categoria;
 }

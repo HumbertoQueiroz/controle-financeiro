@@ -232,9 +232,14 @@ export async function criarDespesa(
 ) {
   const evento = await carregarEventoDoDono(prisma, eventoId, donoId);
 
+  // A ordem importa e não pode vir do banco: `dividirEmPartesIguais` dá o centavo que
+  // sobra ao **primeiro** participante, e sem `orderBy` o Postgres devolve as linhas na
+  // ordem que quiser. O mesmo rateio, repetido, cobrava o centavo de outra pessoa — e o
+  // erro só apareceria no fechamento, como um saldo que ninguém consegue explicar.
   const membros = await prisma.groupMember.findMany({
     where: { groupId: evento.groupId },
     select: { personId: true },
+    orderBy: { person: { name: 'asc' } },
   });
   const idsDosMembros = new Set(membros.map((membro) => membro.personId));
 

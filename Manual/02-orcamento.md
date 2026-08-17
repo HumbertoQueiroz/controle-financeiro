@@ -1,6 +1,30 @@
-# 2. Orçamento do mês
+# 2. Dashboard e orçamento do mês
+
+## Dashboard
 
 É a tela inicial, e responde a pergunta que se faz ao abrir o app: **como está este mês?**
+
+Ela reúne, em uma tela:
+
+| Seção              | O que mostra                                                 |
+| ------------------ | ------------------------------------------------------------ |
+| **Os dois saldos** | Realizado (o que já se moveu) e previsto (se tudo acontecer) |
+| **A pagar**        | O que falta pagar, separado entre caixa e cartão             |
+| **Por categoria**  | Em que o mês foi gasto, e de onde veio o que entrou          |
+| **Participantes**  | Quem deve a você e a quem você deve                          |
+
+Cada bloco tem um **ver na lista** no rodapé, e ele leva o mês e o recorte junto: a lista
+que abre soma exatamente o número que estava no bloco. Se os dois não batessem, um dos dois
+estaria mentindo.
+
+> **Os blocos de "a pagar" não se sobrepõem.** Ou a conta sai do caixa — dinheiro, vale,
+> permuta — ou entra na fatura do cartão. Somados, dão o total da seção, sem nada contado
+> duas vezes e sem nada de fora.
+
+## Orçamento do mês
+
+Em **Mais → Orçamento do mês**. É onde se confere, lançamento por lançamento, de onde os
+números do dashboard vieram.
 
 ## Navegar entre os meses
 

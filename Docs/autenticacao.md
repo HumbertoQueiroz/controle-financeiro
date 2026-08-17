@@ -28,6 +28,29 @@ Duas armadilhas tratadas ali:
 
 Login devolve a mesma mensagem para senha errada, conta inexistente e conta inativa.
 
+### Exigência de senha forte
+
+`senhaSchema`, em `packages/shared/src/schemas/senha.ts`, cobra seis coisas: dez caracteres,
+minúscula, maiúscula, número, símbolo e não estar na lista de senhas óbvias.
+
+Três decisões que valem o registro:
+
+- **`superRefine`, e não uma cadeia de `refine`.** A validação devolve **todas** as
+  pendências de uma vez. Uma por vez transformaria a criação de senha em tentativa e erro,
+  e o resultado prático seria a pessoa parando no mínimo que passa.
+- **A lista de óbvias compara por igualdade, não por `includes`.** `RelatorioDeSenhas!7` é
+  uma boa senha e seria reprovada por um `includes`. O que a lista precisa pegar é a senha
+  que **é** a palavra, com ou sem os dígitos de sempre no fim — `Senha@123` cumpre as quatro
+  classes e ainda assim é a primeira tentativa de qualquer dicionário. Por isso a comparação
+  também considera a raiz, sem os dígitos finais, e reprova o caractere único repetido.
+- **O login não valida força**, só `min(1)`. Aplicar a régua ali impediria de entrar quem
+  cadastrou antes de a regra existir, e ainda revelaria a política para quem só está
+  tentando adivinhar. Senha antiga continua entrando; a exigência vale para senha nova.
+
+A régua é a mesma no formulário (`CampoDeSenha` mostra a lista enquanto a pessoa digita), na
+API e no seed — inclusive na senha que o seed gera sozinho, que sem cuidado sairia às vezes
+sem maiúscula e criaria um admin com uma senha que o próprio sistema recusaria.
+
 ## Os três guards
 
 Em `src/plugins/auth.ts`, compostos por rota.

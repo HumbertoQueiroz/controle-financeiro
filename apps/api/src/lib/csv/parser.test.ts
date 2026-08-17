@@ -13,7 +13,9 @@ describe('leitura de CSV', () => {
     const resultado = lerCsv(ler('nubank-agosto.csv'));
 
     expect(resultado.layout).toBe('nubank');
-    expect(resultado.linhas).toHaveLength(5);
+    // Seis linhas, incluindo a compra de 30/07 que o banco pôs na fatura de agosto por ter
+    // sido feita depois do fechamento.
+    expect(resultado.linhas).toHaveLength(6);
   });
 
   it('reconhece o layout brasileiro com ponto e vírgula e valor em reais', () => {

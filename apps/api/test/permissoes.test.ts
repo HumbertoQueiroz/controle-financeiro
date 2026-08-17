@@ -67,7 +67,7 @@ describe('rotas de administração', () => {
       payload: {
         nome: 'Novo',
         email: 'novo@exemplo.com',
-        senha: 'senha-provisoria-1',
+        senha: 'Senha-Provisoria-1!',
         papel: 'USER',
       },
     });

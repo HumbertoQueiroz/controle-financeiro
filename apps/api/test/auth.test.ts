@@ -144,7 +144,7 @@ describe('troca de senha', () => {
       method: 'POST',
       url: '/auth/trocar-senha',
       headers: { cookie },
-      payload: { senhaAtual: SENHA_PADRAO, novaSenha: 'outra-senha-boa-456' },
+      payload: { senhaAtual: SENHA_PADRAO, novaSenha: 'Outra-Senha-Boa-456' },
     });
 
     expect(resposta.statusCode).toBe(200);
@@ -153,7 +153,7 @@ describe('troca de senha', () => {
         await app.inject({
           method: 'POST',
           url: '/auth/login',
-          payload: { email: 'ana@exemplo.com', senha: 'outra-senha-boa-456' },
+          payload: { email: 'ana@exemplo.com', senha: 'Outra-Senha-Boa-456' },
         })
       ).json().precisaTrocarSenha,
     ).toBe(false);
@@ -167,7 +167,7 @@ describe('troca de senha', () => {
       method: 'POST',
       url: '/auth/trocar-senha',
       headers: { cookie },
-      payload: { senhaAtual: 'nao-e-essa', novaSenha: 'outra-senha-boa-456' },
+      payload: { senhaAtual: 'nao-e-essa', novaSenha: 'Outra-Senha-Boa-456' },
     });
 
     expect(resposta.statusCode).toBe(401);

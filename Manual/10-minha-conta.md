@@ -4,8 +4,9 @@ Em **Mais → Minha conta**.
 
 ## Trocar a senha
 
-Informe a senha atual e a nova, com pelo menos 8 caracteres. A nova precisa ser diferente da
-atual.
+Informe a senha atual e a nova. A nova precisa ser diferente da atual e cumprir as
+exigências mostradas no próprio campo — estão detalhadas em
+[Primeiros passos](01-primeiros-passos.md#a-senha).
 
 ## Baixar meus dados
 
